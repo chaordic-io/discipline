@@ -14,11 +14,15 @@ job is enqueued in the same transaction: E3"), in a review finding's title, in a
 was chosen to make these easy (the stack-selection criteria S1–S7, /discipline:stack); when the
 stack makes one hard, record how it is covered instead.
 
-**E1. Few moving parts.** Every new language, runtime, service and data store must earn its place:
+**E1. Few moving parts, in the system and in the code.** Every new language, runtime, service and data store must earn its place:
 something the product needs that the existing parts can't do well at the expected size. Prefer one
 deployable unit and one data store that does several jobs (storage, isolation, queue, search) until
 scale or a real requirement says otherwise. Content that doesn't change per request is built
-statically, so there is no runtime to operate.
+statically, so there is no runtime to operate. The same holds inside the code: don't express a rule,
+a case or anything else in a new way when an existing, adequate composition, abstraction or
+configuration achieves the same with little or no compromise. A new abstraction, layer, option or
+special case earns its place with a second use, a stated need (the spec, a decision, the roadmap) or a
+boundary the architecture requires.
 
 **E2. One source of truth per contract, everything else generated.** Each contract (database schema
 and queries, API, events, a library's exports) is defined once; types, clients and documentation are

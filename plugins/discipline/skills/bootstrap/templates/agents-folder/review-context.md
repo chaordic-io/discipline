@@ -27,13 +27,25 @@ reviewer needs (paths, commands, sizes, rules), not explanations.
 
 ## architecture
 
-- <!-- ADAPT: describe your layers and what each may import. Example (Go API + React SPA): - `domain/*`: pure logic, no IO, no imports of the store or HTTP. - `authz`: pure permission decisions. - `store`: migrations, generated queries, transaction helpers. - feature packages: a Service (business rules + authorization checks, returns typed errors) and Handlers (thin translation to and from DTOs). Handlers hold no business rules or SQL; services know nothing of HTTP. - `app` composes everything; `server` holds HTTP plumbing. - frontend: API access only through the generated client; feature folders; shared UI in components/. Example (static site): pure logic in src/lib with unit tests; components only render; texts only in the dictionaries; serverless functions thin and tested with their logic in src/lib. --> Check for: 1. Structure that contradicts the spec's architecture section (components, data stores, jobs, deployment). 2. Layer violations, import cycles waiting to happen, and business logic in handlers or UI components that belongs in services or the domain. 3. Violated invariants <!-- ADAPT: e.g. money as float, quantities not through the units package, rounding done in more than one place -->
+- **Layers and what each may import:** <!-- ADAPT. Example (Go API + React SPA): `domain/*` pure logic,
+  no IO; `authz` pure permission decisions; `store` migrations, generated queries, transaction
+  helpers; feature packages with a Service (business rules, authorization, typed errors) and thin
+  Handlers (no business rules or SQL); `app` composes everything; frontend reaches the API only
+  through the generated client. Example (static site): pure logic in src/lib with unit tests;
+  components only render; serverless functions thin, their logic in src/lib. -->
+- **Invariants:** <!-- ADAPT: e.g. money as integer minor units, never float; quantities only through
+  the units package; rounding in one place. -->
 
 ## duplication
 
 - <!-- ADAPT: e.g. `npx --yes jscpd@4 --config .jscpd.json --reporters console` (the console reporter writes nothing) -->
 - <!-- ADAPT: list your shared helper packages -->
 - <!-- ADAPT: paths -->
+
+## simplicity
+
+- **Seams kept on purpose:** <!-- ADAPT: interfaces, extension points and indirection the project wants, with the reason (e.g. "payment providers behind `Provider`: a second one is on the roadmap") -->
+- **Shared machinery to use instead of re-building:** <!-- ADAPT: the shared helper packages, the framework features relied on (validation, retries, caching) -->
 
 ## performance
 

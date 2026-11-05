@@ -493,7 +493,7 @@ class ProfileTest(unittest.TestCase):
         return {l for l, on, _ in lens_profile.decide({**self.BASE, **changes}) if on}
 
     def test_core_lenses_always_on(self):
-        core = {"security", "behaviour", "tests", "architecture", "duplication", "supply-chain"}
+        core = {"security", "behaviour", "tests", "architecture", "duplication", "simplicity", "supply-chain"}
         self.assertTrue(core <= self.lenses(kinds=["cli"], performance="minor"))
 
     def test_localisation_needs_a_user_interface_and_several_languages(self):
@@ -549,11 +549,11 @@ class ProfileTest(unittest.TestCase):
              "context": {"contracts": ["api/**"]}},
         ]}
         new, removed, unused = lens_profile.apply(self.BASE, units)
-        self.assertEqual(list(new["lenses"]), ["security", "behaviour", "tests", "architecture", "duplication", "performance", "supply-chain"])
+        self.assertEqual(list(new["lenses"]), ["security", "behaviour", "tests", "architecture", "duplication", "simplicity", "performance", "supply-chain"])
         self.assertEqual(new["units"][0]["lenses"], ["security"])
         self.assertNotIn("context", new["units"][0])
         self.assertEqual(removed, {"web": ["localisation", "contracts"]})
-        self.assertEqual(unused, ["behaviour", "tests", "architecture", "duplication", "performance", "supply-chain"])
+        self.assertEqual(unused, ["behaviour", "tests", "architecture", "duplication", "simplicity", "performance", "supply-chain"])
         self.assertEqual(units["units"][0]["lenses"], ["security", "localisation", "contracts"])  # input untouched
 
 

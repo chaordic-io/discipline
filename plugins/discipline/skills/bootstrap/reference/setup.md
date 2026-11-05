@@ -11,6 +11,7 @@ Read from /discipline:bootstrap when a step needs it.
 | tests | `discipline:test-coverage-reviewer` | always |
 | architecture | `discipline:architecture-reviewer` | always |
 | duplication | `discipline:duplication-reviewer` | always |
+| simplicity | `discipline:simplicity-reviewer` | always |
 | supply-chain | `discipline:supply-chain-reviewer` | always (every project has dependencies, a build or CI) |
 | performance | `discipline:performance-reviewer` | performance is `critical` or `normal` |
 | contracts | `discipline:contract-reviewer` | the profile lists at least one interface |

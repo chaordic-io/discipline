@@ -84,7 +84,10 @@ def run(root: Path | None = None) -> Result:
         res.section("profile", warnings=[".agents/profile.json is still the template: fill it in, then `discipline lenses apply`"])
     else:
         try:
-            res.section("profile", lenses.check(profile, units))
+            problems = lenses.check(profile, units)
+            used = {l for u in units.get("units", []) for l in u["lenses"]}
+            unused = [] if problems or not units.get("units") else [l for l in lenses.selected(profile) if l not in used]
+            res.section("profile", problems, [f"lenses on but used by no unit (add them where they apply): {', '.join(unused)}"] if unused else [])
         except lenses.ProfileError as e:
             res.section("profile", [f"invalid: {e}"])
             return res

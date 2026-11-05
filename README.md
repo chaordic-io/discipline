@@ -163,7 +163,7 @@ flowchart LR
         direction TB
         SK["Skills<br/>bootstrap · upgrade · working<br/>engineering · stack"]
         WF["Workflow<br/>review-loop"]
-        AG["Agents<br/>10 lens checklists<br/>+ review-reader"]
+        AG["Agents<br/>11 lens checklists<br/>+ review-reader"]
         HK["Hook<br/>read-only guard"]
         CLI["discipline command<br/>(stdlib Python)"]
     end
@@ -315,7 +315,7 @@ apply` turns it into lenses, so reviewers run only where they can find something
 
 ```mermaid
 flowchart TD
-    PF[".agents/profile.json"] --> CORE["Always:<br/>security · behaviour · tests<br/>architecture · duplication · supply-chain"]
+    PF[".agents/profile.json"] --> CORE["Always:<br/>security · behaviour · tests<br/>architecture · duplication<br/>simplicity · supply-chain"]
     PF --> PQ{"performance<br/>critical or normal?"}
     PQ -- yes --> PERF[performance]
     PF --> IQ{"any interface a separately<br/>built part depends on?"}
@@ -334,6 +334,7 @@ flowchart TD
 | tests | Untested behaviour and error paths, assertions that can't fail, missing property tests, mocks of real services. |
 | architecture | Layering, duplicated concepts, transactions, schema constraints, observability (traces, quiet logs). |
 | duplication | Copy-paste and near-duplicate business rules. |
+| simplicity | Superfluous structure: pass-through layers, one-implementation interfaces, unused options, special cases and re-built machinery that existing code already expresses. Not against abstraction: each finding names the simpler form. |
 | supply-chain | New dependencies, install-time code, pinning, licences, CI and image provenance. |
 | performance | N+1 queries, unbounded work, hot spots, blocking I/O, client weight, at the expected sizes. |
 | contracts | Implementation, consumers and spec against the API contract; breaking changes. |
@@ -351,7 +352,7 @@ Two separate lists with stable IDs, so decisions and review findings can cite th
 
 | | |
 |---|---|
-| E1 | Few moving parts |
+| E1 | Few moving parts, in the system and in the code |
 | E2 | One source of truth per contract, everything else generated |
 | E3 | Let the platform enforce the invariants |
 | E4 | Exact domain types; country- and customer-specific rules as data |
@@ -451,7 +452,7 @@ duplication, vulnerability and licence scans, and `discipline check`, pinned so 
 agree:
 
 ```sh
-uvx --from "git+https://github.com/chaordic-io/discipline@v0.1.0#subdirectory=plugins/discipline" discipline check
+uvx --from "git+https://github.com/chaordic-io/discipline@v0.2.0#subdirectory=plugins/discipline" discipline check
 ```
 
 `discipline check` fails when a file belongs to no review unit (or to two), when the units disagree with

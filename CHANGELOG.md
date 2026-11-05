@@ -4,6 +4,36 @@ Each release lists what changed and, under **Migration**, what a repository set 
 version has to do (`/discipline:upgrade` walks through it). Versions follow semantic versioning:
 a minor release adds without breaking, a major one needs migration steps.
 
+## 0.2.0 (2026-11-05)
+
+- **New lens, simplicity (always on).** Its rule: don't express a rule, a case or anything else in a
+  new way when an existing, adequate composition, abstraction or configuration achieves the same with
+  little or no compromise. It looks for superfluous structure, such as pass-through layers,
+  interfaces with one implementation, options nobody sets, special cases the general mechanism
+  covers, re-built machinery and defensive code for impossible states. It isn't against
+  abstraction: each finding must name the existing machinery or composition that expresses the same
+  behaviour, and seams the spec, a decision, the roadmap or the review context ask for are left
+  alone. Checklist `discipline:simplicity-reviewer`; review-context section `simplicity`.
+- **E1** now covers the code as well as the system: "Few moving parts, in the system and in the code".
+- **Duplication lens:** prefers an existing helper and proposes a new abstraction only when it
+  removes more than it adds.
+- **Fix:** the architecture checklist had lost items 1–3 (structure against the spec, layer
+  violations, violated invariants) when its placeholders moved to the review context in 0.1.0; they
+  are back, and the review context's architecture section now has two fields to fill in: layers, and
+  invariants. A test keeps checklist numbering free of gaps.
+- **Gate:** `discipline check` warns about a lens that is on but used by no unit.
+
+### Migration (from 0.1.0)
+
+1. `discipline lenses apply` (the gate fails until you do: the profile now turns `simplicity` on),
+   then add `simplicity` to the units where code lives (usually every unit except dependency and
+   contract-only units). `discipline check` warns until a unit uses it.
+2. Add a `## simplicity` section to `.agents/review-context.md`: the seams the project keeps on
+   purpose, and the shared machinery to use instead of re-building (see the template).
+3. If your review context's `## architecture` section still holds the template's placeholder text,
+   which includes the lost checklist items, replace it with your layers and invariants.
+4. Pin `v0.2.0` in the gate and set `"discipline": "0.2.0"` in `.agents/profile.json`.
+
 ## 0.1.0 (2026-11-05)
 
 First release as a Claude Code plugin (`discipline@chaordic`), replacing the copy-in bootstrap kit.

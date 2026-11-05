@@ -25,7 +25,7 @@ up.
 | `skills/engineering/` | `/discipline:engineering`: the engineering principles E1–E10. |
 | `skills/stack/` | `/discipline:stack`: choosing a stack, criteria S1–S7, with examples. |
 | `workflows/review-loop.js` | `/discipline:review-loop`: the incremental review → verify → fix loop. |
-| `agents/` | The ten reviewer checklists (`discipline:security-auditor`, …) and `discipline:review-reader`, the read-only agent the loop runs them in. |
+| `agents/` | The eleven reviewer checklists (`discipline:security-auditor`, …) and `discipline:review-reader`, the read-only agent the loop runs them in. |
 | `hooks/` | A `PreToolUse` hook that blocks writes by `discipline:review-reader`. |
 | `bin/discipline`, `src/discipline/` | The `discipline` command (below). |
 | `tests/` | The plugin's tests. |
@@ -37,7 +37,7 @@ with no installation (it falls back to `uv run` when there is no suitable `pytho
 as CI, run it pinned with uv:
 
 ```sh
-uvx --from "git+https://github.com/chaordic-io/discipline@v0.1.0#subdirectory=plugins/discipline" discipline check
+uvx --from "git+https://github.com/chaordic-io/discipline@v0.2.0#subdirectory=plugins/discipline" discipline check
 ```
 
 `discipline help` lists the commands: `init`, `check`, `review …`, `lenses …`, `spec-rules`,

@@ -1,6 +1,6 @@
 {
   "name": "discipline",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A working method for coding agents: project profile, deterministic gate, read-only reviewers chosen by product type, an incremental review → verify → fix loop, engineering principles and handover files.",
   "author": {
     "name": "Chaordic"

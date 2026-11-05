@@ -93,11 +93,15 @@ class CheckTest(unittest.TestCase):
 
         applied = self.repo.run("lenses", "apply")
         self.assertEqual(applied.returncode, 0, applied.stderr)
+        out = self.repo.check()
+        self.assertEqual((out["rc"], out["problems"]), (0, []), out)
+        self.assertTrue(any("used by no unit" in w and "simplicity" in w for w in out["warnings"]), out["warnings"])
         units = json.loads((self.repo.root / ".claude/review/units.json").read_text())
         units["units"][0]["lenses"] = list(units["lenses"])
         self.repo.write(".claude/review/units.json", json.dumps(units))
         out = self.repo.check()
         self.assertEqual((out["rc"], out["problems"]), (0, []), out)
+        self.assertFalse(any("used by no unit" in w for w in out["warnings"]), out["warnings"])
 
     def configured(self, **profile) -> None:
         self.repo.profile(**profile)

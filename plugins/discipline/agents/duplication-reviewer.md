@@ -16,4 +16,4 @@ You find DUPLICATION in this project. You are strictly READ-ONLY: never create, 
    - helpers re-implemented instead of reusing the shared ones (see the review context).
 3. Ignore generated code (see the review context), migrations, and test fixtures where repetition helps readability.
 
-Report each finding with the location of every copy (file:line), what is duplicated, and the concrete consolidation: which existing helper to use, or where a new one should live. Don't report trivial similarities of 2–3 lines. Severity: medium if it duplicates a business rule (risk of divergence), low otherwise.
+Report each finding with the location of every copy (file:line), what is duplicated, and the concrete consolidation: which existing helper to use, or where a new one should live. Prefer an existing helper; propose a new abstraction only when it removes more than it adds (a helper whose callers need flags or modes to get their own behaviour back is worse than the copies: the simplicity lens flags that). Don't report trivial similarities of 2–3 lines. Severity: medium if it duplicates a business rule (risk of divergence), low otherwise.

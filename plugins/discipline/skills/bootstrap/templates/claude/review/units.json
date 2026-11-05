@@ -6,6 +6,7 @@
     "tests",
     "architecture",
     "duplication",
+    "simplicity",
     "performance",
     "supply-chain",
     "contracts",
@@ -48,6 +49,7 @@
         "tests",
         "architecture",
         "duplication",
+        "simplicity",
         "performance",
         "contracts"
       ],
@@ -88,6 +90,7 @@
         "tests",
         "architecture",
         "duplication",
+        "simplicity",
         "performance",
         "contracts",
         "localisation"
@@ -111,7 +114,8 @@
         "security",
         "behaviour",
         "tests",
-        "architecture"
+        "architecture",
+        "simplicity"
       ]
     },
     {

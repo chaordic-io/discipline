@@ -128,7 +128,7 @@ class InitTest(unittest.TestCase):
         self.assertIn("discipline lenses apply", failing.stdout)
         self.assertEqual(self.run_cmd("lenses", "apply").returncode, 0)
         units = json.loads((self.repo / ".claude/review/units.json").read_text())
-        self.assertEqual(units["lenses"], ["security", "behaviour", "tests", "architecture", "duplication", "supply-chain"])
+        self.assertEqual(units["lenses"], ["security", "behaviour", "tests", "architecture", "duplication", "simplicity", "supply-chain"])
         passing = self.run_cmd("check")
         self.assertEqual(passing.returncode, 0, passing.stdout)
 
@@ -185,6 +185,12 @@ class TextTest(unittest.TestCase):
             text = path.read_text()
             self.assertNotIn("ADAPT", text, path.name)
             self.assertNotIn("<PROJECT>", text, path.name)
+
+    def test_checklists_are_numbered_from_one_without_gaps(self) -> None:
+        for path in sorted((PLUGIN / "agents").glob("*.md")):
+            nums = [int(n) for n in re.findall(r"^(\d+)\.", path.read_text(), re.M)]
+            if nums:
+                self.assertEqual(nums, list(range(1, len(nums) + 1)), path.name)
 
     def test_every_lens_has_its_checklist_and_the_example_units_use_them_all(self) -> None:
         for lens, name in lenses.CATALOGUE.items():

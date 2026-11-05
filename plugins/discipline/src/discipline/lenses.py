@@ -36,6 +36,7 @@ CATALOGUE: dict[str, str] = {
     "tests": "test-coverage-reviewer.md",
     "architecture": "architecture-reviewer.md",
     "duplication": "duplication-reviewer.md",
+    "simplicity": "simplicity-reviewer.md",
     "performance": "performance-reviewer.md",
     "supply-chain": "supply-chain-reviewer.md",
     "contracts": "contract-reviewer.md",
@@ -78,6 +79,7 @@ CORE = {
     "tests": "every project",
     "architecture": "every project",
     "duplication": "every project",
+    "simplicity": "every project (agents tend to build more structure than the code needs)",
     "supply-chain": "every project has dependencies, a build or CI",
 }
 
