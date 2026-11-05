@@ -512,4 +512,4 @@ new lens needs a checklist in `agents/`, an entry in `CATALOGUE` and a rule in `
 
 ## License
 
-[MIT](LICENSE), © 2026 Chaordic.
+[MIT](LICENSE), © 2026 Chaordic GmbH.
