@@ -4,7 +4,7 @@ Each release lists what changed and, under **Migration**, what a repository set 
 version has to do (`/discipline:upgrade` walks through it). Versions follow semantic versioning:
 a minor release adds without breaking, a major one needs migration steps.
 
-## 1.0.0 (2026-11-05)
+## 0.1.0 (2026-11-05)
 
 First release as a Claude Code plugin (`discipline@chaordic`), replacing the copy-in bootstrap kit.
 
@@ -34,7 +34,9 @@ First release as a Claude Code plugin (`discipline@chaordic`), replacing the cop
   `docs/decisions/` with a generated index (`discipline decisions`); append-only review state (ledger,
   history, trees) and HISTORY.md merged with git's union driver; spec rule IDs defined twice fail the
   gate; team roles, who answers review questions, and personal preferences in an uncommitted
-  `USER.local.md`.
+  `USER.local.md`. `discipline work --list` shows every branch in flight from its own work file (no
+  shared table to conflict over); pinned review snapshots are only ever added, so branches sharing a
+  clone keep each other's; the working guide covers merges that break what git doesn't see.
 - **Check, then ask; never assume silently:** a rule for what agents decide (technical, reversible,
   invisible to users) and what the user decides; `discipline decisions search` before asking anything,
   so settled questions aren't asked again; assumptions marked `(assumed <date>, not confirmed)` in the
@@ -57,4 +59,4 @@ First release as a Claude Code plugin (`discipline@chaordic`), replacing the cop
 4. Reduce `.agents/ENGINEERING.md` and `.agents/WORKING.md` to the project's own parts (the generic
    text is now `/discipline:engineering` and `/discipline:working`).
 5. Replace `python3 -m unittest discover -s scripts/review` in the gate with the pinned
-   `discipline check`, and add `"discipline": "1.0.0"` to `.agents/profile.json`.
+   `discipline check`, and add `"discipline": "0.1.0"` to `.agents/profile.json`.

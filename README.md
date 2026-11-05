@@ -443,7 +443,7 @@ duplication, vulnerability and licence scans, and `discipline check`, pinned so 
 agree:
 
 ```sh
-uvx --from "git+https://github.com/chaordic-io/discipline@v1.0.0#subdirectory=plugins/discipline" discipline check
+uvx --from "git+https://github.com/chaordic-io/discipline@v0.1.0#subdirectory=plugins/discipline" discipline check
 ```
 
 `discipline check` fails when a file belongs to no review unit (or to two), when the units disagree with

@@ -36,7 +36,7 @@ with no installation (it falls back to `uv run` when there is no suitable `pytho
 as CI, run it pinned with uv:
 
 ```sh
-uvx --from "git+https://github.com/chaordic-io/discipline@v1.0.0#subdirectory=plugins/discipline" discipline check
+uvx --from "git+https://github.com/chaordic-io/discipline@v0.1.0#subdirectory=plugins/discipline" discipline check
 ```
 
 `discipline help` lists the commands: `init`, `check`, `review …`, `lenses …`, `spec-rules`,
