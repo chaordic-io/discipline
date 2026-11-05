@@ -2,6 +2,24 @@
 
 **Coding agents are fast. discipline makes them dependable.**
 
+## Install
+
+In a terminal:
+
+```sh
+claude plugin marketplace add chaordic-io/discipline
+claude plugin install discipline@chaordic
+```
+
+Or inside Claude Code: `/plugin marketplace add chaordic-io/discipline`, then
+`/plugin install discipline@chaordic`. Then run `/discipline:bootstrap` in your repository
+([Set up a repository](#set-up-a-repository) shows what it does).
+
+Requirements: git, and Python 3.10+ (or [uv](https://docs.astral.sh/uv/), which fetches a Python when
+there is none). The review loop is a Claude Code workflow, so it needs a plan with workflows enabled.
+
+## Why discipline
+
 An agent can write a feature in minutes. What it doesn't bring on its own is the discipline around
 the code:
 - remembering yesterday's decisions;
@@ -86,24 +104,10 @@ data, money, permissions), and no hours spent reconstructing why something is th
 It pays off on products that live and change; for a throwaway prototype, a spike or hackathon code,
 it's more process than the work needs.
 
-- [Install](#install) · [Set up a repository](#set-up-a-repository) · [How the parts fit](#how-the-parts-fit)
+- [Install](#install) · [Why discipline](#why-discipline) · [Set up a repository](#set-up-a-repository) · [How the parts fit](#how-the-parts-fit)
 - [The way of working](#the-way-of-working) · [The review loop](#the-review-loop) · [Reviewers](#reviewers-chosen-by-the-product)
 - [Principles](#engineering-principles-and-stack-criteria) · [Handover files](#handover-files) · [Working as a team](#working-as-a-team) · [The gate](#the-gate)
 - [The `discipline` command](#the-discipline-command) · [This repository](#this-repository)
-
-## Install
-
-The repository is a plugin marketplace called `chaordic`, with one plugin, `discipline`.
-
-```sh
-claude plugin marketplace add chaordic-io/discipline
-claude plugin install discipline@chaordic
-```
-
-Or inside Claude Code: `/plugin install discipline --marketplace chaordic-io/discipline`.
-
-Requirements: git, and Python 3.10+ (or [uv](https://docs.astral.sh/uv/), which fetches a Python when
-there is none). The review loop is a Claude Code workflow, so it needs a plan with workflows enabled.
 
 ## Set up a repository
 

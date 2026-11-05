@@ -7,7 +7,8 @@ the parts fit together; this file covers the plugin's contents and its command-l
 Install it from the `chaordic` marketplace:
 
 ```
-/plugin install discipline --marketplace chaordic-io/discipline
+/plugin marketplace add chaordic-io/discipline
+/plugin install discipline@chaordic
 ```
 
 or, from a terminal: `claude plugin marketplace add chaordic-io/discipline`, then
