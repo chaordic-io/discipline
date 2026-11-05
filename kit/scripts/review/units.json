@@ -1,0 +1,74 @@
+{
+  "_comment": "Review units for the review-loop workflow (ADAPT: replace the example units with your repository's). Each unit is reviewed by the listed lenses; a (unit, lens) pair is re-reviewed only when the unit's content hash changes. Order = priority for never-reviewed units: put security-sensitive units first. Globs are fnmatch patterns on repo-relative paths ('*' matches within one path segment, '**' across segments). 'exclude' wins over 'include'. Every file under 'roots' must belong to exactly one unit (scripts/review/test_review.py fails otherwise). Generated files go in globalExclude.",
+  "lenses": {
+    "security": ".claude/agents/security-auditor.md",
+    "tests": ".claude/agents/test-coverage-reviewer.md",
+    "architecture": ".claude/agents/architecture-reviewer.md",
+    "duplication": ".claude/agents/duplication-reviewer.md",
+    "localisation": ".claude/agents/localisation-reviewer.md"
+  },
+  "globalExclude": [
+    "**/node_modules/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+    ".claude/review/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/*.png",
+    "**/*.svg",
+    "**/package-lock.json"
+  ],
+  "roots": [
+    "src/",
+    "tests/",
+    "scripts/",
+    ".claude/workflows/",
+    "Makefile"
+  ],
+  "units": [
+    {
+      "id": "auth",
+      "include": [
+        "src/auth/**",
+        "tests/auth/**"
+      ],
+      "lenses": [
+        "security",
+        "tests",
+        "architecture",
+        "duplication"
+      ]
+    },
+    {
+      "id": "core",
+      "include": [
+        "src/**",
+        "tests/**"
+      ],
+      "exclude": [
+        "src/auth/**",
+        "tests/auth/**"
+      ],
+      "lenses": [
+        "security",
+        "tests",
+        "architecture",
+        "duplication",
+        "localisation"
+      ]
+    },
+    {
+      "id": "infra",
+      "include": [
+        "scripts/**",
+        ".claude/workflows/**",
+        "Makefile"
+      ],
+      "lenses": [
+        "security",
+        "architecture",
+        "duplication"
+      ]
+    }
+  ]
+}
