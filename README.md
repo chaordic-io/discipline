@@ -16,7 +16,11 @@ Or inside Claude Code: `/plugin marketplace add chaordic-io/discipline`, then
 ([Set up a repository](#set-up-a-repository) shows what it does).
 
 Requirements: git, and Python 3.10+ (or [uv](https://docs.astral.sh/uv/), which fetches a Python when
-there is none). The review loop is a Claude Code workflow, so it needs a plan with workflows enabled.
+there is none). The review loop is a Claude Code
+[dynamic workflow](https://code.claude.com/docs/en/workflows.md). These are available on every paid
+plan, with API access, and on Bedrock, Google Cloud and Foundry. On Pro, turn them on first: the
+Dynamic workflows row in `/config`. An admin can turn them off for an organisation (`disableWorkflows`), and
+then the review loop can't run.
 
 ## Why discipline
 
