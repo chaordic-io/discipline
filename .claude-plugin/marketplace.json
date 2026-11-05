@@ -1,0 +1,12 @@
+{
+  "name": "chaordic",
+  "owner": { "name": "Chaordic" },
+  "metadata": { "description": "Claude Code plugins from Chaordic." },
+  "plugins": [
+    {
+      "name": "discipline",
+      "source": "./plugins/discipline",
+      "description": "A working method for coding agents: project profile, deterministic gate, read-only reviewers chosen by product type, an incremental review → verify → fix loop, engineering principles and handover files."
+    }
+  ]
+}

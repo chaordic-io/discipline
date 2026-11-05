@@ -1,0 +1,14 @@
+#!/bin/sh
+# The discipline CLI, run straight from the plugin. The package is standard-library Python, so it needs
+# no install, virtualenv or network: python3 (3.10+) runs it from the plugin's src/. uv is used only to
+# fetch a Python when the machine has no suitable python3.
+here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export PYTHONPATH="$here/src${PYTHONPATH:+:$PYTHONPATH}"
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
+  exec python3 -m discipline "$@"
+fi
+if command -v uv >/dev/null 2>&1; then
+  exec uv run --no-project --python '>=3.10' python -m discipline "$@"
+fi
+echo "discipline needs Python 3.10 or newer (or uv, to fetch one)" >&2
+exit 127

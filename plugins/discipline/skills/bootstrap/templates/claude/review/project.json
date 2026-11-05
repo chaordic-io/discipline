@@ -1,0 +1,12 @@
+{
+  "_comment": "This project's settings for the review-loop workflow; the workflow itself is generic. Every field is optional: a missing one uses the workflow's generic default. A worked example is in /discipline:stack (reference/examples/go-react-postgres.md).",
+  "name": "<PROJECT>",
+  "docs": "CLAUDE.md and docs/SPEC.md",
+  "gate": "make check",
+  "fixGate": "`make lint` and `discipline check`",
+  "affectedTests": "the test files covering the files you changed, and those of modules importing them",
+  "targetedChecks": "the single test files or packages you touched, and the linter for the touched part of the repo",
+  "scriptCheckable": "lockfiles (check them through the manifest, `git diff` and targeted searches)",
+  "deltaFocus": "bugs or regressions introduced, new code without tests (or tests that don't assert the behaviour), and tests weakened or re-pinned to match the code without a spec change or decision behind it",
+  "_adapt": "ADAPT: set name, gate, fixGate, affectedTests and targetedChecks to this project's commands; add translation catalogues to scriptCheckable if localisation is on"
+}
