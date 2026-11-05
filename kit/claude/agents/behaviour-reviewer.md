@@ -7,7 +7,7 @@ You review BEHAVIOUR for <PROJECT>: does the code do what the business intends? 
 
 The intent is written down in three places. Read the parts that concern your unit before the code:
 - `docs/SPEC.md`: the rules, the role × action table, validation, limits and edge cases. Rules may carry IDs (e.g. `R-3.2.1`).
-- `docs/DECISIONS.md`: why things are the way they are, and what was turned down. A decision is as binding as the spec.
+- `docs/DECISIONS.md` (and `docs/decisions/` once it is split): why things are the way they are, and what was turned down. A decision is as binding as the spec. Search it by the unit's areas and spec sections (`grep -n "Area: <area>\|Spec:.*<section>"`) rather than reading it whole, and skip entries marked `Superseded by`.
 - `docs/proposals/`: designs, including their "Built" lists and the user's request verbatim.
 <!-- ADAPT: the domain areas where mistakes cost most, e.g. money and rounding, permissions per role, versioned settings applied to past periods, country-specific rules, document numbering. -->
 

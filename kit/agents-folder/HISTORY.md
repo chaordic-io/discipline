@@ -3,6 +3,10 @@
 The order in which things were built. The reasoning for each item is in `docs/DECISIONS.md`
 (newest first); this file is the timeline that ties the entries together.
 
+**Sessions read the last three phases;** the older ones are reference. Keep each phase to a few lines
+with pointers, not a retelling. Past the budget (200 lines), move the oldest phases to
+`docs/history.md` and leave one line here pointing to it.
+
 <!-- One numbered item per phase or feedback round, with the date range, what was built, the decisions
 it produced (pointers into DECISIONS), and the verification at its end (gate, end-to-end and smoke
 numbers). Example:

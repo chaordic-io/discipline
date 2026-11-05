@@ -9,6 +9,7 @@
     "performance": ".claude/agents/performance-reviewer.md",
     "supply-chain": ".claude/agents/supply-chain-reviewer.md",
     "contracts": ".claude/agents/contract-reviewer.md",
+    "ai": ".claude/agents/ai-reviewer.md",
     "localisation": ".claude/agents/localisation-reviewer.md"
   },
   "globalExclude": [
@@ -31,7 +32,9 @@
     "Makefile",
     "Dockerfile",
     "package.json",
-    "package-lock.json"
+    "package-lock.json",
+    "prompts/",
+    "evals/"
   ],
   "units": [
     {
@@ -76,7 +79,9 @@
       ],
       "exclude": [
         "src/auth/**",
-        "tests/auth/**"
+        "tests/auth/**",
+        "src/ai/**",
+        "tests/ai/**"
       ],
       "lenses": [
         "security",
@@ -93,6 +98,22 @@
           "api/**"
         ]
       }
+    },
+    {
+      "id": "ai",
+      "include": [
+        "src/ai/**",
+        "tests/ai/**",
+        "prompts/**",
+        "evals/**"
+      ],
+      "lenses": [
+        "ai",
+        "security",
+        "behaviour",
+        "tests",
+        "architecture"
+      ]
     },
     {
       "id": "api-contract",

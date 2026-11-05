@@ -9,7 +9,7 @@ Project rules (CLAUDE.md): every function and endpoint has tests in the same cha
 
 Look for:
 1. Public functions, endpoints, queries or UI components/hooks with no test exercising them. Use coverage output to find uncovered branches, and name the function and the uncovered behaviour.
-2. Untested error paths and permission denials (403/404/409/422).
+2. Untested error paths and permission denials (403/404/409/422). A test of a real failure asserts the one error log (or error span) it expects; a test of an expected outcome asserts that nothing was logged as an error; the suite fails on unexpected error logs.
 3. Assertions that cannot fail, such as checking only the status code and not the body, or ignoring returned errors.
 4. Missing property tests where an invariant obviously exists: round trips, totals identities, monotonicity, idempotency, independence from how a range is cut.
 5. External systems tested with fakes instead of real services. Flaky patterns: sleep-based waits without deadlines, shared mutable state between parallel tests, dependence on the wall clock or the current date.

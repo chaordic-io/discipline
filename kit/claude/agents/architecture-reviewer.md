@@ -29,6 +29,7 @@ Check for:
 6. Transactions: multi-step writes outside one transaction, jobs enqueued outside the business transaction.
 7. Schema constraints that should exist (not null, unique, foreign keys, checks) and invariants enforced only in application code.
 8. Versioned or historical data mutated in place, so that past results change.
+9. Observability: a server process, job or queue consumer without a trace, or a trace not propagated across a process boundary or queue; errors without the trace ID in the log or the error response; expected outcomes (validation failures, not found, access denied, a retry that succeeds) logged as errors; one failure logged at several layers; warnings nobody can act on; missing rate, error and duration metrics for a new endpoint or job type; in clients, failures that are swallowed instead of reported through the product's own endpoint. (Secrets and personal data in logs belong to the security lens.)
 
 Leave these to their own lenses when the unit has them: query cost and indexes (performance), API and contract consistency (contracts), dependencies (supply-chain).
 

@@ -1,5 +1,10 @@
 # Status (last updated <YYYY-MM-DD>)
 
+<!-- A snapshot of now, not a log: rewrite sections in place, never append history. Done roadmap items
+move to HISTORY.md the day they are done; answered questions move to docs/DECISIONS.md; a follow-up
+not taken up within a phase goes onto the roadmap or is dropped with a one-line reason. Budget: 150
+lines (`python3 scripts/review/handover.py`). -->
+
 ## Continuation point (start here)
 
 <!-- The next concrete step, precise enough that a fresh session can start on it without asking.

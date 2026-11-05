@@ -27,11 +27,14 @@ import install  # noqa: E402
 
 # Installed verbatim into every repository; their test data uses synthetic example paths.
 VERBATIM = {"scripts/review/review.py", "scripts/review/test_review.py", "scripts/review/lenses.py",
-            "scripts/review/spec_rules.py"}
+            "scripts/review/spec_rules.py", "scripts/review/ai_evals.py", "scripts/review/handover.py"}
 
 # Names that would tie the kit to the repository it was extracted from. Worked examples live in
 # stacks/ and may name it; nothing in kit/ or BOOTSTRAP.md may.
 SOURCE_NAMES = re.compile(r"Hourmark|hourmark|gethourmark|Chaordic|api/internal|web/src/i18n|\.agents/bootstrap/templates")
+
+# Installed-repository paths the texts mention that are created later, not by install.py.
+CREATED_LATER = {"docs/history.md"}
 
 # Paths in backticks that point into an installed repository.
 INSTALLED_PATH = re.compile(r"`((?:\.agents|\.claude|scripts/review|docs)/[\w./-]+\.[a-z]+)`")
@@ -100,6 +103,31 @@ class InstallTest(unittest.TestCase):
         passing = run(tests)
         self.assertEqual(passing.returncode, 0, passing.stdout + passing.stderr)
 
+    def test_an_ai_profile_turns_on_the_ai_lens_and_the_tests_require_eval_facets(self) -> None:
+        install.install(self.repo)
+        lenses = [sys.executable, "scripts/review/lenses.py"]
+        tests = [sys.executable, "-m", "unittest", "discover", "-s", "scripts/review", "-q"]
+        run = lambda cmd: subprocess.run(cmd, cwd=self.repo, capture_output=True, text=True)
+        (self.repo / ".agents/profile.json").write_text(json.dumps({
+            "product": "Support assistant", "kinds": ["web-app"], "languages": ["en"], "interfaces": [],
+            "performance": "normal", "data": "customer tickets", "overrides": {"add": {}, "remove": {}},
+            "ai": ["rag"], "aiEvals": {"prompts": ["prompts/**"], "evals": "evals/{name}",
+                                       "facets": {"prompts/**": ["query", "retrieval", "answer"]}}}))
+        self.assertEqual(run(lenses + ["apply"]).returncode, 0)
+        units = json.loads((self.repo / "scripts/review/units.json").read_text())
+        self.assertIn("ai", units["lenses"])
+        (self.repo / "prompts").mkdir()
+        (self.repo / "prompts/answer.md").write_text("Answer from the documents.\n")
+        (self.repo / "evals/answer").mkdir(parents=True)
+        (self.repo / "evals/answer/query.yaml").write_text("[]\n")
+        failing = run(tests)
+        self.assertNotEqual(failing.returncode, 0)
+        self.assertIn("evals/answer/retrieval", failing.stderr)
+        for facet in ("retrieval", "answer"):
+            (self.repo / f"evals/answer/{facet}.yaml").write_text("[]\n")
+        passing = run(tests)
+        self.assertEqual(passing.returncode, 0, passing.stdout + passing.stderr)
+
     def test_spec_rules_switched_on_fail_the_tests_until_every_rule_is_pinned(self) -> None:
         install.install(self.repo)
         (self.repo / "tests").mkdir()
@@ -146,8 +174,9 @@ class InstallTest(unittest.TestCase):
         for text in texts:
             for m in INSTALLED_PATH.finditer(text.read_text()):
                 path = m.group(1)
-                # .claude/review/ holds state the review loop writes at run time.
-                if "<" in path or "*" in path or path.startswith(".claude/review/"):
+                # .claude/review/ holds state the review loop writes at run time; the archives are
+                # created when a handover file passes its budget (WORKING.md).
+                if "<" in path or "*" in path or path.startswith(".claude/review/") or path in CREATED_LATER:
                     continue
                 self.assertTrue((self.repo / path).exists(), f"{text.name} mentions {path}, which the kit does not install")
 
@@ -160,10 +189,35 @@ class TextTest(unittest.TestCase):
                 self.assertIsNone(SOURCE_NAMES.search(line), f"{text.relative_to(HERE)}:{n}: {line.strip()}")
 
     def test_kit_and_stack_paths_in_bootstrap_exist(self) -> None:
-        for name in ["BOOTSTRAP.md", *[p.relative_to(HERE).as_posix() for p in (HERE / "stacks").glob("*.md")]]:
+        for name in ["BOOTSTRAP.md", *[p.relative_to(HERE).as_posix() for p in (HERE / "stacks").rglob("*.md")]]:
             for m in KIT_PATH.finditer((HERE / name).read_text()):
                 path = m.group(1) or m.group(2)
                 self.assertTrue((HERE / path).exists(), f"{name} mentions {path}")
+
+    def test_relative_links_in_stacks_resolve(self) -> None:
+        for doc in (HERE / "stacks").rglob("*.md"):
+            for target in re.findall(r"\]\(([^)#:]+)\)", doc.read_text()):
+                self.assertTrue((doc.parent / target).exists(), f"{doc.relative_to(HERE)} links to {target}")
+
+    def test_principles_and_criteria_are_numbered_and_every_citation_exists(self) -> None:
+        """E1..En (how we build, kit/agents-folder/ENGINEERING.md) and S1..Sn (stack selection,
+        stacks/README.md): numbered without gaps; every E- or S-number cited anywhere exists; no
+        citation of the retired P-numbers remains."""
+        series = {
+            "E": set(re.findall(r"\*\*(E\d+)\. ", (HERE / "kit/agents-folder/ENGINEERING.md").read_text())),
+            "S": set(re.findall(r"\*\*(S\d+)\. ", (HERE / "stacks/README.md").read_text())),
+        }
+        for prefix, ids in series.items():
+            self.assertTrue(ids, prefix)
+            self.assertEqual(ids, {f"{prefix}{n}" for n in range(1, len(ids) + 1)}, f"{prefix} numbered without gaps")
+        docs = [HERE / "BOOTSTRAP.md", *(HERE / "stacks").rglob("*.md"),
+                *[HERE / "kit" / r for r in install.kit_files() if r.endswith((".md", ".js", ".py"))]]
+        for doc in docs:
+            text = re.sub(r"noqa:[^\n]*", "", doc.read_text())  # linter codes such as E402 are not citations
+            for prefix, ids in series.items():
+                for cited in re.findall(rf"\b{prefix}(\d+)\b", text):
+                    self.assertIn(f"{prefix}{cited}", ids, f"{doc.relative_to(HERE)} cites {prefix}{cited}")
+            self.assertEqual(re.findall(r"\bP\d+\b", text), [], f"{doc.relative_to(HERE)} cites a retired P-number")
 
     def test_every_lens_in_the_catalogue_has_its_checklist_and_the_example_units_use_them_all(self) -> None:
         sys.path.insert(0, str(HERE / "kit/scripts/review"))

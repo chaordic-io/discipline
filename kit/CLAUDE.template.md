@@ -22,21 +22,38 @@ never be edited by hand, and which command regenerates them. -->
 - `make check`: the full gate (lint + tests + coverage + duplication + vulnerability scan + review-unit
   coverage). It must pass before you declare any work done. <!-- ADAPT: your gate command -->
 <!-- ADAPT: the other commands: single test suites, code generation, local development, and the slow
-suites (browser end-to-end, production-image smoke test) with when to run them. -->
+suites (browser end-to-end, production-image smoke test, the AI eval suite) with when to run them. -->
 
 ## Non-negotiable rules
+The short, binding form of how we build. The reasoning, and the engineering principles these come from
+(E1–E10), are in `.agents/ENGINEERING.md`; cite the E-number when a decision or finding rests on one.
 - **Tests for everything.** Every new function or endpoint gets tests in the same change.
   - Use property-based tests or fuzz tests for parsers, conversions, arithmetic and anything with an
     invariant. <!-- ADAPT: libraries -->
   - Code that touches a database, mail server or other external system is tested against the real
-    service (testcontainers or a container started by the test). Do not mock the database.
+    service (testcontainers or a container started by the test). Do not mock the database. (E5)
   - Every bug fix gets a regression test that fails without the fix.
 - **Every failure is ours.** A red gate, a flaky test, a stray error or warning is investigated to its
   root cause and fixed with a regression test, whether this change caused it or not. Re-running until
   green is not a fix; "unrelated" and "pre-existing" are not reasons.
+- **Observable, with quiet logs.** Every server process and job emits traces and metrics, with the
+  trace ID in every log line and error response. Log at error level only real failures (a broken
+  invariant, a failed dependency, a bug), once, where they are handled; expected outcomes (validation
+  failures, not found, access denied, a retry that succeeds) are never logged as errors. No secrets or
+  personal data in logs, traces or metric labels. Tests fail on error logs they did not expect, and a
+  test of a failure path asserts the one error log it expects. Client errors are reported through our
+  own endpoint. (E9) <!-- ADAPT: the logging and tracing setup, the test helper that captures logs -->
+- **AI features are engineered like code (E10).** <!-- ADAPT: delete if the product calls no models -->
+  Prompts live in `prompts/` (one file each) and models are pinned to exact versions; a change to
+  either runs the eval suite, which must stay above its thresholds, and a model or provider change gets
+  a `docs/DECISIONS.md` entry. Every prompt has an eval set with the facets of its mode (`rag`: query,
+  retrieval, answer; `assistive`: output; `agentic`: task, trajectory, safety); production failures
+  become eval cases. Tests of the code around the model use recorded responses, never the live model.
+  Model output is validated and treated as untrusted; content that isn't ours never widens what the
+  model may do; irreversible actions need a confirmation outside the model.
 - **Strict lint.** Don't add lint suppressions without a specific reason in a trailing comment. Never
   weaken the lint configs to make code pass.
-- **Generated code** is never edited by hand; regenerate it. <!-- ADAPT: the command -->
+- **Generated code** is never edited by hand; regenerate it (E2). <!-- ADAPT: the command -->
 - **Claims match the code.** User-facing copy (marketing pages, docs, help texts) claims only what is
   built, and tests pin the claims to the code where they can.
 - **Translations are written for the market, not translated.** Every non-English text reads as if a
@@ -46,7 +63,7 @@ suites (browser end-to-end, production-image smoke test) with when to run them. 
   catalogue paths; delete this rule if the product has one language -->
 - **National or customer-specific rules are never hard-coded.** Country- or customer-specific behaviour
   is configuration on a generic engine, or a module behind an interface, chosen by data, so one
-  country's rules never reach another's users. <!-- ADAPT: delete if irrelevant -->
+  country's rules never reach another's users (E4). <!-- ADAPT: delete if irrelevant -->
 <!-- ADAPT: domain rules. Examples from earlier projects:
 - Tenancy: all tenant data access goes through one helper; every tenant table has row-level security and
   a test proving cross-tenant isolation.

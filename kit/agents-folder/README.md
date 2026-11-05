@@ -13,9 +13,12 @@ Read in this order:
 2. [`USER.md`](USER.md): who the user is, how they like to work, standing preferences in their words.
 3. [`WORKING.md`](WORKING.md): how we work: the request loop, verification, delegation, parallel
    sessions, the review loop, reporting.
-4. [`ENVIRONMENT.md`](ENVIRONMENT.md): the machine, containers, tool versions, gotchas.
-5. [`HISTORY.md`](HISTORY.md): what was built in what order, with pointers into `docs/DECISIONS.md`.
-6. [`profile.json`](profile.json): what kind of product this is; it decides which review lenses run
+4. [`ENGINEERING.md`](ENGINEERING.md): how we build: the engineering principles E1–E10, with the
+   reasoning behind the rules in `CLAUDE.md`.
+5. [`ENVIRONMENT.md`](ENVIRONMENT.md): the machine, containers, tool versions, gotchas.
+6. [`HISTORY.md`](HISTORY.md): what was built in what order, with pointers into `docs/DECISIONS.md`.
+   Read the last three phases; the older ones are reference.
+7. [`profile.json`](profile.json): what kind of product this is; it decides which review lenses run
    (`python3 scripts/review/lenses.py show`).
 
 The documents these files point to instead of repeating:
@@ -27,4 +30,5 @@ The documents these files point to instead of repeating:
 - `python3 scripts/review/review.py status`: review coverage per unit and lens.
 
 Keep these files current: update `STATUS.md` at the end of every sizeable piece of work, and the
-continuation point after every step.
+continuation point after every step. Keep them small, too: see "Keeping the handover files small" in
+`WORKING.md`.

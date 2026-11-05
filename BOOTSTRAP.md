@@ -15,12 +15,20 @@ an agent can set up the whole working method from it, with no access to the repo
   spec and the recorded decisions say), tests, architecture, duplication, performance, supply chain,
   contracts (API drift) and localisation. Where the written intent doesn't settle a behaviour, the
   reviewers ask the user instead of guessing.
+- **AI features engineered like code** (when the product calls models): prompts and pinned models in the
+  repository, eval sets per prompt with a facet per stage (query, retrieval and answer for RAG; task,
+  trajectory and safety for agents), a reviewer for injection, tools, data and budgets, and a gate
+  check that no prompt lacks its evals.
 - **Spec rules pinned by tests** (optional): each business rule in the spec has an ID, and the gate
   fails on a rule that no test names.
 - **An incremental review loop** (a Claude Code workflow): stale code is reviewed, skeptics verify the
   findings, one fixer fixes them, only the fix is re-reviewed, and a ledger records it all. Unchanged
   code is never reviewed twice, and rejected findings stay rejected.
-- **A decision log, a spec and a proposal template**, so every change has a recorded reason.
+- **Engineering principles** (`.agents/ENGINEERING.md`, E1–E10) for every change, kept apart from the
+  **stack-selection criteria** (`stacks/README.md`, S1–S7) used once to choose the stack.
+- **A decision log, a spec and a proposal template**, so every change has a recorded reason, with rules
+  and size budgets that keep the files every session reads small (`WORKING.md`, "Keeping the handover
+  files small").
 - **An optional usage guard** that stops the review loop at a weekly or 5-hour usage percentage.
 
 Requirements: Python 3.10+ and git. Everything else depends on the stack you choose.
@@ -30,13 +38,13 @@ Requirements: Python 3.10+ and git. Everything else depends on the stack you cho
 | Path | Becomes | What it is |
 |---|---|---|
 | `kit/CLAUDE.template.md` | `CLAUDE.md` | Repo rules, commands, the review loop. Fill in the `ADAPT` parts. |
-| `kit/agents-folder/` | `.agents/` | Handover folder: `README`, `STATUS`, `USER`, `WORKING`, `ENVIRONMENT`, `HISTORY`, `RESUME`, and `profile.json` (the project profile). `WORKING.md` is the full description of how we work. |
-| `kit/claude/agents/` | `.claude/agents/` | The nine read-only reviewer checklists (see "The reviewers"), and `review-reader.md`, the tool-restricted agent type the review loop runs them in. |
+| `kit/agents-folder/` | `.agents/` | Handover folder: `README`, `STATUS`, `USER`, `WORKING`, `ENGINEERING`, `ENVIRONMENT`, `HISTORY`, `RESUME`, and `profile.json` (the project profile). `WORKING.md` is how we work; `ENGINEERING.md` is how we build (the engineering principles E1–E10). |
+| `kit/claude/agents/` | `.claude/agents/` | The ten read-only reviewer checklists (see "The reviewers"), and `review-reader.md`, the tool-restricted agent type the review loop runs them in. |
 | `kit/claude/workflows/review-loop.js` | `.claude/workflows/review-loop.js` | The review loop. Only its `PROJECT` block is project-specific. |
-| `kit/scripts/review/` | `scripts/review/` | `review.py` (ledger, units, diffs, usage, questions), `lenses.py` (profile → lenses), `spec_rules.py` (spec rules ↔ tests), `test_review.py` (their tests, including "every file belongs to a unit", "the units follow the profile" and "every spec rule is pinned"), `units.json` (example units). |
+| `kit/scripts/review/` | `scripts/review/` | `review.py` (ledger, units, diffs, usage, questions), `lenses.py` (profile → lenses), `spec_rules.py` (spec rules ↔ tests), `ai_evals.py` (prompts ↔ eval sets), `handover.py` (size budgets for the files every session reads), `test_review.py` (their tests, including "every file belongs to a unit", "the units follow the profile" and "every spec rule is pinned"), `units.json` (example units). |
 | `kit/docs/` | `docs/` | `SPEC.md` skeleton, `DECISIONS.md` with the entry format, `proposals/TEMPLATE.md`. |
 | `kit/home/statusline-usage.sh` | `~/.claude/statusline-usage.sh` | Optional, for the usage guard. |
-| `stacks/` | (reference) | Our [default suggestion for web apps](stacks/recommended-webapp.md) (app and marketing site, library by purpose); worked examples ([Go + React + Postgres](stacks/go-react-postgres.md), [Astro on Cloudflare Pages](stacks/astro-cloudflare-pages.md)) and a capability table for other stacks ([stacks/README.md](stacks/README.md)). |
+| `stacks/` | (reference) | [How we choose a stack](stacks/README.md): the selection criteria S1–S7, how to apply them, shapes by product kind, and the capability checklist that checks a stack supports the engineering principles. Worked [examples](stacks/examples/) from one project ([its libraries](stacks/examples/webapp-libraries.md), [Go + React + Postgres](stacks/examples/go-react-postgres.md), [Astro on Cloudflare Pages](stacks/examples/astro-cloudflare-pages.md)) illustrate them. |
 | `install.py` | (tool) | Copies the kit into place; never overwrites; lists what still needs adapting. |
 | `selfcheck.py` | (tool) | Proves the kit works on its own (installs it into an empty git repository and runs its tests there). |
 
@@ -55,6 +63,7 @@ the kit itself is being edited; `install.py` puts them in place.
 | supply-chain | `kit/claude/agents/supply-chain-reviewer.md` | always (every project has dependencies, a build or CI) |
 | performance | `kit/claude/agents/performance-reviewer.md` | performance is `critical` or `normal` |
 | contracts | `kit/claude/agents/contract-reviewer.md` | the profile lists at least one interface |
+| ai | `kit/claude/agents/ai-reviewer.md` | the profile's `ai` lists a mode (`rag`, `assistive`, `agentic`) |
 | localisation | `kit/claude/agents/localisation-reviewer.md` | the product has a user interface and more than one language |
 
 `scripts/review/lenses.py` applies these rules to `.agents/profile.json`. The profile's `overrides`
@@ -102,7 +111,9 @@ batch of questions with a recommended answer for each, and it decides everything
 12. **Optional usage guard:** `python3 .agents/bootstrap/install.py --statusline`, then the settings
     change in "The usage guard".
 13. **Record:** a first `docs/DECISIONS.md` entry ("Working method set up from the bootstrap kit") with
-    the profile, the lenses that are on and off and why, and the stack with the reasons for it; the
+    the profile, the lenses that are on and off and why, and the stack part by part with the selection
+    criteria each choice rests on (S1–S7 in `stacks/README.md`), the alternatives turned down, and any
+    engineering principle (E1–E10 in `.agents/ENGINEERING.md`) the stack makes hard; the
     continuation point and roadmap in `.agents/STATUS.md`.
 14. **First review:** with the user's go-ahead, run the `review-loop` workflow (workflows run only when
     the user opts in), then the gate.
@@ -124,18 +135,21 @@ and say what you found instead.
 | 5 | How much does performance matter? `critical` (budgets are part of the product), `normal` (must stay fast at expected sizes), `minor` (small data, few users). | `profile.performance` | `normal` for apps, services and pipelines; `minor` for static sites, CLIs and small internal tools. |
 | 6 | What sensitive data does it hold? Personal data, payments, health data, several tenants' data, or none. | `profile.data`, the security checklist, `CLAUDE.md` domain rules | (from the description) |
 | 7 | Does the spec carry business rules worth pinning to tests by ID (calculations, permissions, lifecycles, legal rules)? If so, which files are tests? | `profile.specRules` | Yes for apps with business rules: `{"tests": [<the test file globs>]}`. No (`null`) for content sites, CLIs and thin wrappers. |
-| 8 | Should any reviewer be on or off against the rules above, and why? | `profile.overrides` | No overrides. |
+| 8 | Does the product call AI models, and how? Any of `rag` (answers from retrieved documents), `assistive` (suggests or drafts; a person decides), `agentic` (acts through tools in several steps), or none. | `profile.ai` | From the description. An agent that searches documents is `rag` and `agentic`. |
+| 9 | Should any reviewer be on or off against the rules above, and why? | `profile.overrides` | No overrides. |
 
 ### Batch 2: the stack (decides the gate and the tools)
 
 | # | Question | Goes into | Recommendation |
 |---|---|---|---|
 | 1 | Is there code already? If so, the stack is what is there: confirm it, and ask only about the gaps. | `CLAUDE.md` layout | (from the repository) |
-| 2 | Which languages and frameworks? | `CLAUDE.md`, the gate, `PROJECT` | A new business web app: [`stacks/recommended-webapp.md`](stacks/recommended-webapp.md). Otherwise what the team knows best, checked against the capability table in [`stacks/README.md`](stacks/README.md). |
+| 2 | Which languages, frameworks and data stores, part by part? | `CLAUDE.md`, the gate, `PROJECT`, `docs/DECISIONS.md` | Apply [`stacks/README.md`](stacks/README.md): the shape for the profile's kinds, then one or two options per part, each with the principles it rests on and checked against the capability checklist. What the team knows well comes first unless a principle rules it out. |
 | 3 | Which data stores and external services (database, queue, mail, object storage, third-party APIs)? | real-service tests, `ENVIRONMENT.md` | Each one runs as a container in tests (testcontainers or the stack's equivalent), never mocked. |
 | 4 | Only if contracts are on: how is each contract written (OpenAPI, protobuf, GraphQL, JSON Schema, a library's exports), which way does generation go (contract from code, or code from contract), and which consumers stay on old versions? | the contract checklist, `units.json` context, the gate | Generate the contract from the code and the clients from the contract, and commit both; a breaking-change check against the main branch in the gate. |
 | 5 | Which package ecosystems, which CI system, and how is it shipped (container images, app stores, a package registry, static hosting)? | the supply-chain checklist, the dependencies unit, the gate | Lockfiles committed; CI installs from them; CI actions and base images pinned by digest. |
 | 6 | Where are tool versions pinned, and what is the gate command called? | `ENVIRONMENT.md`, `CLAUDE.md`, `PROJECT.gate` | One version file for every tool (e.g. `mise.toml`), used by CI too; `make check`. |
+| 7 | Where do traces, metrics, logs and client error reports go, and who looks at them? | `ENVIRONMENT.md` "Deployment", `CLAUDE.md` | OpenTelemetry from every server process and job to one backend the team already runs or can host where the data may live; client errors through the product's own endpoint (E9). |
+| 8 | Only if `ai` lists a mode: which models and providers, under which data terms (retention, training, processing location), where prompts and eval sets live, which eval runner, and which thresholds block a change? | `profile.aiEvals`, the ai checklist, `docs/DECISIONS.md`, `CLAUDE.md` | Prompts in `prompts/`, one file each; eval sets in `evals/<prompt>/` with the facets of the mode (E10); models pinned to exact versions behind one client interface; a provider whose terms fit the profile's `data`. |
 
 ### Batch 3: how we work
 
@@ -174,6 +188,9 @@ Guidelines:
   handlers, UI that applies rules), not on pure infrastructure; no localisation on pure domain code; no security on pure UI
   components without input handling; performance where there are queries, hot paths or a client to
   load; contracts on the units that implement or consume an interface, and on the contract itself.
+- **An AI unit per feature** (when `ai` lists a mode): the code that calls the model, its prompts and
+  its eval sets together, reviewed with `ai`, `security`, `behaviour` and `tests`, so a prompt change
+  makes the feature's review stale.
 - **A dependencies unit** with the manifests, lockfiles, CI configuration and Dockerfiles, reviewed
   with `supply-chain` and `security`. A lockfile change then makes it stale, so every dependency change
   is reviewed. Reviewers read lockfiles through diffs, not line by line (`PROJECT.scriptCheckable`).
@@ -190,7 +207,8 @@ loop. The gate must fail on any problem. A good model:
 
 - lint and type checks, with no warnings allowed;
 - tests with coverage thresholds, including property and fuzz tests, and real services through
-  containers (never a mocked database);
+  containers (never a mocked database); tests fail on error logs they did not expect (E9 in
+  `.agents/ENGINEERING.md`);
 - a check that generated code is current;
 - a duplication check;
 - vulnerability scans, and a licence check where the stack has one (supply chain);
@@ -198,11 +216,15 @@ loop. The gate must fail on any problem. A good model:
   check against the main branch, and contract tests that run the real server against the contract;
 - when performance is `critical`: benchmarks or budgets for the hot paths the spec names;
 - `test_review.py`, so every file belongs to a review unit, the units follow the profile, and (when
-  `specRules` is on) every rule in the spec is named by a test and no test names a rule that is gone.
+  `specRules` is on) every rule in the spec is named by a test and no test names a rule that is gone,
+  and (when `ai` lists a mode) every prompt has its eval set with the facets its mode needs.
 
 Keep slow suites (browser end-to-end against the production build, a smoke test of the production
-image, load tests) as separate targets that the main session runs after the agents finish.
-`stacks/README.md` maps each item to tools for Go, TypeScript, Python, Rust and the JVM.
+image, load tests, and the AI eval suite with its live model calls) as separate targets that the main
+session runs after the agents finish. The eval suite also runs on every prompt or model change and
+before a release, and fails below its thresholds.
+The capability checklist in `stacks/README.md` illustrates each item with tools for Go, TypeScript,
+Python, Rust and the JVM.
 
 ## Running the review loop
 
@@ -249,7 +271,8 @@ The full text is `kit/agents-folder/WORKING.md` (installed as `.agents/WORKING.m
    the review loop. Every failure is investigated to its root cause.
 4. Delegate sizeable work with a self-contained brief; never let two agents edit the same area; split
    ownership and batch shared-file edits when several sessions share the repository.
-5. Report briefly with numbers, decisions needed and next steps; keep `.agents/STATUS.md` current.
+5. Report briefly with numbers, decisions needed and next steps; keep `.agents/STATUS.md` current, and
+   the handover files small: STATUS a snapshot, HISTORY read from the end, DECISIONS read by search.
 
 ## Maintaining the kit
 
@@ -258,6 +281,8 @@ The kit is the master copy of `review.py`, `lenses.py`, `test_review.py` and the
 that use the kit. Inside such a repository (the kit at `.agents/bootstrap/`), `selfcheck.py` fails
 while the installed copies differ from the kit's. When a project improves its copy, bring the change
 back here first. When a lesson is learned that applies beyond one project, add it to
-`kit/agents-folder/WORKING.md`, and new reviewer rules to `kit/claude/agents/`. A new lens needs a
+`kit/agents-folder/WORKING.md`, a new engineering principle to `kit/agents-folder/ENGINEERING.md`
+(numbered on, never renumbered: decisions cite the IDs), a new stack-selection criterion to
+`stacks/README.md`, and new reviewer rules to `kit/claude/agents/`. A new lens needs a
 checklist, an entry in `CATALOGUE` and a rule in `decide` (both in `kit/scripts/review/lenses.py`),
 tests for the rule, and a row in "The reviewers".

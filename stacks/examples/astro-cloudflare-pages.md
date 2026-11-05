@@ -1,7 +1,9 @@
 # Example stack: Astro static site on Cloudflare Pages
 
-A worked example from the project this kit was extracted from: the product's marketing site, built by
-a second agent session next to the app (`site/` in the same repository, see `kit/agents-folder/WORKING.md`,
+A worked example from the project this kit was extracted from, and an example rather than a
+recommendation: how the selection criteria in [`../README.md`](../README.md) and the engineering
+principles applied to a static site (S2 and E1: no runtime to operate; E7: a strict CSP and no
+third-party requests; E8: every language written for its market). It is the product's marketing site, built by a second agent session next to the app (`site/` in the same repository, see `kit/agents-folder/WORKING.md`,
 "Several sessions on one repository").
 
 ## The stack

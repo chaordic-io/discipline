@@ -50,7 +50,9 @@ Done means verified, not written. In order of cost:
 3. **Slow suites, run by the main session after the agents finish:** the browser end-to-end suite
    against the production build, and a smoke test of the production image or deployment through the
    critical path (sign-up → core action → document → email → public link → isolation). One at a time
-   when they share Docker.
+   when they share Docker. When the product calls models: the eval suite, on every prompt or model
+   change and before a release, compared with the last recorded scores per facet; a drop below the
+   thresholds is a failure like a red test.
 4. **Visual check for UI work:** screenshots at phone, tablet and desktop widths (and dark mode),
    looked at, not just generated. Check that nothing scrolls sideways.
 5. **Claims tests:** where copy makes statements about the product (marketing site, docs, legal texts),
@@ -63,7 +65,8 @@ Done means verified, not written. In order of cost:
    against primary sources before relying on them.
 
 **Every failure is investigated**, whether this change caused it or not: red gates, flaky tests,
-unhandled errors in test output, warnings. Find the root cause, fix it with a regression test, report it
+unhandled errors and error logs in test output, warnings. Since only real failures are logged as
+errors, an error log in a test run is a failure. Find the root cause, fix it with a regression test, report it
 plainly (what failed, why, what fixed it). Never call it "unrelated" or "pre-existing", and never re-run
 until green as the fix. If a test expectation was wrong, say so and correct the test, with the reasoning.
 
@@ -118,6 +121,29 @@ terminal multiplexer for agents):
   fixer although one verifier refuted them; read the fixer's reasoning for each.
 - Saved workflows load at session start. After editing `.claude/workflows/review-loop.js`, run it by
   its script path until the next session, or the old version runs.
+
+## Keeping the handover files small
+
+Every session reads `CLAUDE.md`, `STATUS.md` and the recent part of `HISTORY.md`, and every behaviour
+reviewer and verifier looks things up in `docs/DECISIONS.md`. What grows there is paid for in every
+session and every review run, and a status page that has become a log is worse at saying where things
+stand. So:
+
+- **`STATUS.md` is a snapshot.** Rewrite it in place. When a roadmap item is done, move it to
+  `HISTORY.md` that day; answered questions go to `docs/DECISIONS.md`; a follow-up not taken up within
+  a phase goes onto the roadmap or is dropped with a reason.
+- **`HISTORY.md` is read from the end.** A few lines per phase, with pointers. Older phases move to
+  `docs/history.md` when it passes its budget.
+- **`docs/DECISIONS.md` is read by search.** Every entry has `Area` and `Spec`, so readers can find the
+  ones that concern them; a replaced decision gets `Superseded by` instead of being edited. Past its
+  budget, past years move to `docs/decisions/<year>.md` behind a one-line-per-entry index.
+- **`CLAUDE.md` holds rules, not explanations.** Reasoning goes to `.agents/ENGINEERING.md`, history to
+  `HISTORY.md`, decisions to `docs/DECISIONS.md`.
+- **When:** at the end of each phase, before stopping a session (`RESUME.md`), and whenever
+  `review.py status` or the gate warns that a file is over budget (`python3 scripts/review/handover.py`
+  shows the sizes; budgets can be changed per project in `units.json`, `handoverBudgets`).
+- **Moving, never deleting:** trimming moves text to its archive or its proper file. Only follow-ups
+  are dropped, and each with its reason.
 
 ## Reporting
 

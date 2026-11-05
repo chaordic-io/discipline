@@ -1,7 +1,10 @@
 # Example stack: Go API + React SPA + Postgres
 
 A worked example from the project this kit was extracted from (Hourmark: multi-tenant time tracking
-and invoicing). Use it as a model: copy the parts that fit, adapt the names.
+and invoicing): how the engineering principles (E1–E10 in
+[`ENGINEERING.md`](../../kit/agents-folder/ENGINEERING.md)) became a gate, tests and review configuration. It is an example, not a recommendation: copy the reasoning and the parts that fit your
+stack, not the tools. The libraries behind it, with the reason for each, are in
+[`webapp-libraries.md`](webapp-libraries.md).
 
 ## The stack
 

@@ -24,6 +24,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import ai_evals  # noqa: E402
 import spec_rules  # noqa: E402
 
 ROOT = HERE.parents[1]
@@ -40,6 +41,7 @@ CATALOGUE: dict[str, str] = {
     "performance": ".claude/agents/performance-reviewer.md",
     "supply-chain": ".claude/agents/supply-chain-reviewer.md",
     "contracts": ".claude/agents/contract-reviewer.md",
+    "ai": ".claude/agents/ai-reviewer.md",
     "localisation": ".claude/agents/localisation-reviewer.md",
 }
 
@@ -127,6 +129,13 @@ def validate(profile: dict) -> None:
             if not isinstance(reason, str) or not reason.strip():
                 problems.append(f"overrides.{side}.{lens}: give the reason")
     problems.extend(spec_rules.validate_config(profile.get("specRules")))
+    ai = profile.get("ai", [])
+    if not isinstance(ai, list) or not all(isinstance(m, str) for m in ai):
+        problems.append("ai must be a list of modes ([] for none)")
+        ai = []
+    else:
+        problems.extend(f"ai: unknown mode {m!r} (one of {', '.join(ai_evals.MODES)}; [] for none)" for m in ai if m not in ai_evals.MODES)
+    problems.extend(ai_evals.validate_config(profile.get("aiEvals"), ai))
     both = set(overrides.get("add", {})) & set(overrides.get("remove", {}))
     if both:
         problems.append(f"overrides both add and remove {sorted(both)}")
@@ -147,6 +156,9 @@ def decide(profile: dict) -> list[tuple[str, bool, str]]:
         out["contracts"] = (True, "interfaces: " + ", ".join(interfaces))
     else:
         out["contracts"] = (False, "no interface that a separately built or released part depends on")
+
+    ai = profile.get("ai", [])
+    out["ai"] = (bool(ai), "calls models: " + ", ".join(ai) if ai else "calls no models")
 
     ui = sorted(kinds & UI_KINDS)
     if len(langs) > 1 and ui:

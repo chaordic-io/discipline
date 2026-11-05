@@ -13,6 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lenses as lens_profile  # noqa: E402
 import review  # noqa: E402
+import ai_evals  # noqa: E402
+import handover  # noqa: E402
 import spec_rules  # noqa: E402
 
 
@@ -464,6 +466,15 @@ class ProfileTest(unittest.TestCase):
         self.assertIn("contracts", self.lenses(kinds=["mobile-app"], interfaces=["mobile-backend"]))
         self.assertIn("contracts", self.lenses(kinds=["library"], interfaces=["published-library"]))
 
+    def test_ai_lens_needs_a_mode_and_eval_locations(self):
+        self.assertNotIn("ai", self.lenses())
+        evals = {"prompts": ["prompts/**"], "evals": "evals/{name}"}
+        self.assertIn("ai", self.lenses(ai=["rag", "agentic"], aiEvals=evals))
+        for bad in ({"ai": ["chatbot"], "aiEvals": evals}, {"ai": ["rag"]}, {"ai": [], "aiEvals": evals},
+                    {"ai": ["rag"], "aiEvals": {"prompts": ["p/**"], "evals": "evals/"}}, {"ai": "rag"}):
+            with self.assertRaises(lens_profile.ProfileError, msg=repr(bad)):
+                self.lenses(**bad)
+
     def test_performance_off_only_when_minor(self):
         self.assertIn("performance", self.lenses(performance="critical"))
         self.assertNotIn("performance", self.lenses(performance="minor"))
@@ -564,6 +575,73 @@ class SpecRulesTest(unittest.TestCase):
         if cfg is None:
             self.skipTest("specRules is off")
         self.assertEqual(spec_rules.problems(spec_rules.report(cfg, review.ROOT, review.repo_files())), [])
+
+
+class AiEvalsTest(unittest.TestCase):
+    """Every prompt has its eval set and facets (scripts/review/ai_evals.py)."""
+
+    CFG = {"prompts": ["prompts/**"], "evals": "evals/{name}",
+           "facets": {"prompts/search/**": ai_evals.FACETS["rag"], "prompts/agents/**": ai_evals.FACETS["agentic"]}}
+
+    def test_missing_sets_facets_and_duplicates(self):
+        files = [
+            "prompts/search/answer.md", "evals/answer/query.yaml", "evals/answer/retrieval/cases.jsonl",
+            "evals/answer/answers.yaml",  # not the `answer` facet: a facet is a whole name
+            "prompts/agents/book.md",
+            "prompts/draft-email.txt", "evals/draft-email.yaml",
+            "prompts/a/summary.md", "prompts/b/summary.md", "evals/summary/output.yaml",
+        ]
+        rep = ai_evals.report(self.CFG, files)
+        self.assertEqual(rep["prompts"], 4)
+        self.assertEqual(rep["missing"], {
+            "answer": ["evals/answer/answer"],
+            "book": ["evals/book", "evals/book/safety", "evals/book/task", "evals/book/trajectory"],
+        })
+        self.assertEqual(rep["duplicates"], {"summary": ["prompts/a/summary.md", "prompts/b/summary.md"]})
+        self.assertEqual(len(ai_evals.problems(rep)), 3)
+
+    def test_complete(self):
+        files = ["prompts/search/q.md", "evals/q/query.yaml", "evals/q/retrieval.yaml", "evals/q/answer/x.jsonl"]
+        self.assertEqual(ai_evals.problems(ai_evals.report(self.CFG, files)), [])
+
+    def test_every_prompt_has_its_evals(self):
+        """The gate check, when the profile lists an AI mode."""
+        if not lens_profile.PROFILE.exists():
+            self.skipTest("no .agents/profile.json")
+        profile = lens_profile.load_profile()
+        if not (lens_profile.is_filled(profile) and profile.get("ai")):
+            self.skipTest("the profile lists no AI mode")
+        rep = ai_evals.report(profile["aiEvals"], review.repo_files())
+        self.assertEqual(ai_evals.problems(rep), [])
+
+
+class HandoverTest(unittest.TestCase):
+    """Size budgets for the files every session reads (scripts/review/handover.py)."""
+
+    def setUp(self):
+        import tempfile
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / ".agents").mkdir()
+        (self.root / "docs").mkdir()
+
+    def test_over_budget_by_lines_and_by_decision_entries(self):
+        (self.root / ".agents/STATUS.md").write_text("x\n" * 151)
+        (self.root / "CLAUDE.md").write_text("x\n" * 10)
+        entries = "".join(f"## 2026-01-{d:02d}: decision {d}\n- **Area:** a\n\n" for d in range(1, 29)) * 4
+        (self.root / "docs/DECISIONS.md").write_text("# Decisions\n\n<!-- ## <YYYY-MM-DD>: format -->\n" + entries)
+        self.assertEqual(handover.over_budget_lines(self.root, {}), [
+            ".agents/STATUS.md: 151 lines (budget 150)",
+            "docs/DECISIONS.md: 112 entries (budget 100)",
+        ])
+        # A project can change a budget; files that don't exist are not reported.
+        self.assertEqual(handover.over_budget_lines(self.root, {"handoverBudgets": {
+            ".agents/STATUS.md": {"lines": 200}, "docs/DECISIONS.md": {"entries": 200}}}), [])
+
+    def test_handover_files_within_budget(self):
+        """The gate's soft guard: warns, never fails."""
+        import warnings
+        for line in handover.over_budget_lines(review.ROOT, review.UNITS):
+            warnings.warn(f"handover file over budget: {line} (see .agents/WORKING.md)", stacklevel=1)
 
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")

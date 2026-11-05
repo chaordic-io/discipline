@@ -44,7 +44,7 @@ const SECOND_OPINION = ['security', 'supply-chain']
 // ---------------------------------------------------------------- Project configuration
 // ADAPT: the only project-specific part of this workflow. Fill in every field for your repository;
 // nothing below this block names a project, a stack or a command. Worked examples for two stacks are
-// in the bootstrap kit's stacks/ folder (go-react-postgres.md, astro-cloudflare-pages.md).
+// in the bootstrap kit's stacks/examples/ folder (go-react-postgres.md, astro-cloudflare-pages.md).
 const PROJECT = {
   name: '<PROJECT>',
   // Where reviewers, verifiers and fixers find the rules and the intended behaviour.
@@ -213,7 +213,7 @@ const verdictsByIndex = (v) => new Map(((v && v.verdicts) || []).map((x) => [x.i
 const verifyOnce = (findings, scope) =>
   agent(
     `You are a skeptical senior engineer verifying code-review findings (${scope}) of the ${PROJECT.name} repo (read-only; do not modify files).
-For EACH finding below, try to REFUTE it by reading the actual code, ${PROJECT.docs}, docs/DECISIONS.md and docs/proposals/. real=true only if the problem genuinely exists in the current code and the fix is worthwhile for this project. If uncertain, a matter of taste, or already handled elsewhere, real=false. A QUESTION is real=true only if those documents genuinely don't settle the behaviour (or contradict each other) and the answer matters; real=false if they answer it (say where). Give a short reason either way. Return one verdict per finding, using its index.
+For EACH finding below, try to REFUTE it by reading the actual code, ${PROJECT.docs}, the docs/DECISIONS.md entries for its area or spec section (search by \`Area:\` or \`Spec:\`; skip entries marked \`Superseded by\`) and docs/proposals/. real=true only if the problem genuinely exists in the current code and the fix is worthwhile for this project. If uncertain, a matter of taste, or already handled elsewhere, real=false. A QUESTION is real=true only if those documents genuinely don't settle the behaviour (or contradict each other) and the answer matters; real=false if they answer it (say where). Give a short reason either way. Return one verdict per finding, using its index.
 
 ${findings.map((f, i) => `#${i} ${describe(f)}`).join('\n\n')}`,
     { label: `verify:${scope}`, phase: 'Verify', schema: VERDICTS, agentType: READER },
@@ -318,7 +318,7 @@ Unit: ${sel.unit} (${sel.since ? 'changed since its last full review' : sel.reas
 3. ${sel.since
         ? `This unit was fully reviewed before, and only some of it has changed since. Run \`${RP} diff --unit ${sel.unit} --since ${sel.since}\` and review THOSE CHANGES: read the changed files and enough surrounding code (callers, tests, the spec) to judge them. Do not re-review unchanged code, except where a change makes an existing problem worse. Files you did not read because they are unchanged are not skips.`
         : 'Read every file of the unit in full, tests included.'} Look outside the unit only to check callers, contracts, the spec, or (duplication lens) to search the whole repo for similar logic.
-4. Report substantive, verifiable findings only: a concrete failure scenario pointing at real code. No style nits. At most 10 per lens, most severe first.
+4. Report substantive, verifiable findings only: a concrete failure scenario pointing at real code. No style nits. At most 10 per lens, most severe first. Where a finding breaks an engineering principle in .agents/ENGINEERING.md, put its ID in the title (e.g. "E9: validation failure logged as error").
 5. Where docs/SPEC.md, docs/DECISIONS.md and docs/proposals/ don't settle what the behaviour should be (or contradict each other), don't guess and don't report a defect: report kind="question" with what is unclear and why it matters in \`scenario\`, the options in \`options\` (the current behaviour among them) and your recommended option in \`fix\`. The user answers questions; the fixer never sees them.
 In \`coverage\` give, per lens, one sentence on what you checked. List in \`skipped\` any unit file you did not read in full (ideally none).${PROJECT.scriptCheckable ? ` Exception: ${PROJECT.scriptCheckable} instead of read line by line; that is not a skip.` : ''}`,
       { label: `review:${sel.unit}`, phase: 'Review', schema: REVIEW, agentType: READER, ...reviewOpts },

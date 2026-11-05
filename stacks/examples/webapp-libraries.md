@@ -1,14 +1,27 @@
-# Our default stack for web apps (a suggestion)
+# Example: the libraries one business web app chose
 
-What we reach for when a new project is a **business web app** (multi-user, data in a database,
-documents and emails, several languages) with a **marketing site** next to it. It is the stack of the
-project this kit was extracted from, proven there with the full gate and review loop. It is a starting
-point, not a rule: another kind of problem (data pipelines, mobile, realtime, ML, embedded) calls for
-another stack, and the kit works the same with any of them (see [README.md](README.md)).
+**An example, not a recommendation.** These are the choices made for one project: a multi-tenant
+business web app (data in a database, documents and emails, several languages) with a marketing site
+next to it. They show how the selection criteria in [`../README.md`](../README.md) and the engineering
+principles in [`ENGINEERING.md`](../../kit/agents-folder/ENGINEERING.md) turn into concrete choices; the
+libraries were current when the project chose them and may not be now. For a new project, apply the
+criteria to its own profile and check every tool before adopting it.
 
-Why this shape: one statically typed backend binary, one database that also isolates tenants and runs
-the job queue, a typed SPA whose API client is generated from the backend, and a static site with no
-runtime to operate. Few moving parts, all testable against real services.
+## How the criteria and principles show
+
+- **S2 and E1, few moving parts:** one statically typed backend binary with the SPA embedded; one database
+  that also isolates tenants and runs the job queue; a static marketing site with no runtime.
+- **E2, one source of truth (S7: generators exist for each contract):** SQL queries generate the Go data layer; the Go handlers generate the
+  OpenAPI spec; the spec generates the TypeScript client. All committed, all checked current.
+- **E3, the platform enforces invariants (S7: Postgres can):** row-level security per tenant, constraints in the schema,
+  jobs enqueued in the business transaction.
+- **E4, exact domain types:** money as integer minor units plus a currency, decimals for rates, UUIDs.
+- **E5, tested against the real thing:** Postgres and a mail catcher in containers for every test
+  run; documents rendered deterministically and tested by rendering; QR codes round-tripped through
+  two independent decoders.
+- **E6, E7, E8:** the standard library where it suffices (logging, rate limiting); self-hosted fonts
+  and first-party analytics; message catalogues with a lint rule against hard-coded text; accessible
+  UI primitives.
 
 ## The app
 
@@ -93,15 +106,5 @@ runtime to operate. Few moving parts, all testable against real services.
 | Lint | **ESLint** strict-type-checked + **eslint-plugin-astro** | |
 | Security | `public/_headers`: strict CSP (`'self'` only, no inline script or style), HSTS | |
 
-Details of how the site is built and tested: [astro-cloudflare-pages.md](astro-cloudflare-pages.md).
-Details of the app's gate: [go-react-postgres.md](go-react-postgres.md).
-
-## When to choose differently
-
-- **Mostly content, little app:** the Astro site alone, maybe with a few functions.
-- **Realtime collaboration:** add a websocket layer or a sync engine; reconsider the SPA's data layer.
-- **Heavy data or ML work:** Python for that part (with the Python row of the capability table), next
-  to or instead of the Go backend.
-- **Mobile first:** a native or cross-platform client; the Go API and its OpenAPI spec still fit.
-- **A team that knows another stack well:** that usually beats this list. Keep the method (gate,
-  real-service tests, review loop), change the tools.
+How the site is built and tested: [astro-cloudflare-pages.md](astro-cloudflare-pages.md).
+How the app is gated and tested: [go-react-postgres.md](go-react-postgres.md).

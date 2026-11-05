@@ -20,7 +20,8 @@ Commands (all print to stdout; `show`, `diff`, `status` are read-only):
   mark UNIT:LENS ...   mark pairs reviewed at the current content; also advance
                        pairs that were current at `plan` time (their only changes since
                        are the fixer's, which the delta review covered)
-  status               coverage matrix (units x lenses): ok / stale / never
+  status               coverage matrix (units x lenses): ok / stale / never; also open questions
+                       and handover files over budget (scripts/review/handover.py)
   questions            open questions for the user (numbered): behaviour the spec, decisions and
                        proposals don't settle; the fixer never acts on them
   answer N --reason R  close question N after the user answered it (record the answer in
@@ -539,6 +540,10 @@ def cmd_status(_a) -> None:
     print(f"\ncoverage {ok}/{total} pairs current; findings so far: {counts}")
     if counts["question"]:
         print(f"{counts['question']} open questions for the user: `python3 scripts/review/review.py questions`")
+    import handover  # noqa: PLC0415  (scripts/review/handover.py; imported here to keep review.py importable alone)
+    over = handover.over_budget_lines(ROOT, UNITS)
+    if over:
+        print("handover files over budget (trim them: .agents/WORKING.md, \"Keeping the handover files small\"): " + "; ".join(over))
 
 
 def main() -> None:
