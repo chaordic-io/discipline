@@ -24,7 +24,8 @@ shared files that need a merge step. Delete if there is only one. -->
 
 ## Open questions for the user
 
-<!-- Batched, each with options and a recommendation. Move answers to DECISIONS when given. -->
+<!-- Batched, each with options and a recommendation. Move answers to DECISIONS when given.
+Include the review loop's open questions (`python3 scripts/review/review.py questions`). -->
 
 ## Follow-ups and known issues
 

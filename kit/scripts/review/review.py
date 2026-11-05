@@ -7,9 +7,13 @@ State lives in .claude/review/:
   run.json       snapshot taken by `plan` (unit hashes + git tree) for `diff`/`mark`
 
 Commands (all print to stdout; `show`, `diff`, `status` are read-only):
-  plan [--max-units N] [--unit ID ...] [--lens L ...]
+  plan [--max-units N] [--unit ID ...] [--lens L ...] [--stop-at P] [--stop-at-5h P]
                        pick stale (unit, lens) pairs, snapshot the tree, print JSON
-  show UNIT            files of a unit + previously reported findings in it
+  show UNIT            files of a unit + previously reported findings in it (every open and
+                       rejected one; only the most recent fixed ones)
+  touched [--unit U ...]
+                       files changed since the `plan` snapshot (JSON list), optionally limited
+                       to units: proves that read-only reviewers wrote nothing
   diff [--unit U] [--since TREE]
                        unified diff since the `plan` snapshot (or TREE), optionally limited to a unit
   record FILE.json     append finding outcomes [{unit,lens,file,line,title,status,reason}]
@@ -17,10 +21,20 @@ Commands (all print to stdout; `show`, `diff`, `status` are read-only):
                        pairs that were current at `plan` time (their only changes since
                        are the fixer's, which the delta review covered)
   status               coverage matrix (units x lenses): ok / stale / never
+  questions            open questions for the user (numbered): behaviour the spec, decisions and
+                       proposals don't settle; the fixer never acts on them
+  answer N --reason R  close question N after the user answered it (record the answer in
+                       docs/SPEC.md and docs/DECISIONS.md first; R says where)
   open                 findings whose latest outcome is `open`; `plan` carries those with a
                        scenario into the next run (confirmed ones go straight to the fixer,
                        the rest are verified again first)
-  quota [--stop-at P]  weekly/5-hour usage % from the Claude Code status line; ok=false at P
+  quota [--stop-at P] [--stop-at-5h P]
+                       weekly/5-hour usage % from the Claude Code status line; ok=false at P
+
+Lens context: a unit may list, per lens, files outside the unit whose changes make that lens stale
+for the unit ("context": {"contracts": ["api/openapi.yaml"]}). The (unit, lens) hash then covers the
+unit's files plus those, so editing a contract re-queues the contract review of every unit that
+implements or consumes it, and nothing else.
 """
 from __future__ import annotations
 
@@ -100,8 +114,23 @@ def unit_hash(paths: list[str]) -> str:
     return _hash((p, (ROOT / p).read_bytes()) for p in paths)
 
 
-def all_hashes(files: list[str]) -> dict[str, str]:
-    return {u["id"]: unit_hash(unit_files(u, files)) for u in UNITS["units"]}
+def lens_context(unit: dict, lens: str) -> list[str]:
+    """Patterns of files outside the unit that this lens also depends on (see the module docstring)."""
+    return (unit.get("context") or {}).get(lens, [])
+
+
+def all_hashes(files: list[str]) -> dict[str, dict[str, str]]:
+    """{unit: {lens: hash}}. A lens without context gets the unit's own content hash, so ledgers
+    written before lens context existed stay valid."""
+    out: dict[str, dict[str, str]] = {}
+    for u in UNITS["units"]:
+        own = unit_files(u, files)
+        base = unit_hash(own)
+        out[u["id"]] = {}
+        for lens in u["lenses"]:
+            ctx = lens_context(u, lens)
+            out[u["id"]][lens] = unit_hash(sorted(set(own) | {f for f in files if matches(f, ctx)})) if ctx else base
+    return out
 
 
 def load(path: Path, default):
@@ -138,7 +167,7 @@ def cmd_plan(a) -> None:
         if a.unit and u["id"] not in a.unit:
             continue
         done = ledger.get(u["id"], {})
-        lenses = [l for l in u["lenses"] if (not a.lens or l in a.lens) and done.get(l) != hashes[u["id"]]]
+        lenses = [l for l in u["lenses"] if (not a.lens or l in a.lens) and done.get(l) != hashes[u["id"]][l]]
         if lenses:
             seen = any(l in done for l in u["lenses"])
             entry = {"unit": u["id"], "lenses": lenses, "reason": "changed" if seen else "never reviewed",
@@ -148,8 +177,10 @@ def cmd_plan(a) -> None:
                 since = trees.get(u["id"])
                 if since and tree_exists(since):
                     entry["since"] = since
-                elif len({done[l] for l in lenses}) == 1:
-                    lost[u["id"]] = done[lenses[0]]  # base gone, but one reviewed hash to look for
+                elif len({done[l] for l in lenses}) == 1 and not any(lens_context(u, l) for l in lenses):
+                    # Base gone, but one reviewed hash to look for (a hash that covers context files
+                    # cannot be matched against a commit's unit content; those get a full review).
+                    lost[u["id"]] = done[lenses[0]]
             pending.append(entry)
     # Recorded bases that were pruned: recover them from a commit with the reviewed content.
     recovered = recover_bases(lost)
@@ -171,7 +202,8 @@ def cmd_plan(a) -> None:
             entry["changed"] = changed_files(entry["since"], tree, units[entry["unit"]])
     save(RUN, {"tree": tree, "hashes": hashes, "selected": selected})
     print(json.dumps({
-        "quota": quota(a.stop_at),
+        "lenses": UNITS["lenses"],
+        "quota": quota(a.stop_at, getattr(a, "stop_at_5h", None)),
         "open": carried(),
         "selected": selected,
         "remainingUnits": len(pending) - len(selected),
@@ -190,7 +222,9 @@ def latest_outcomes() -> dict[tuple, dict]:
     identified by its unit, file and title."""
     latest: dict[tuple, dict] = {}
     for h in history():
-        latest[(h.get("unit"), h.get("file"), h.get("title"))] = h
+        key = (h.get("unit"), h.get("file"), h.get("title"))
+        latest.pop(key, None)  # re-insert, so the dict is ordered by each finding's latest outcome
+        latest[key] = h
     return latest
 
 
@@ -209,6 +243,41 @@ def carried() -> list[dict]:
             for h in latest_open() if h.get("scenario")]
 
 
+STATUSES = {"fixed", "rejected", "open", "question", "answered"}
+ROW_KEYS = ("unit", "lens", "severity", "file", "line", "title", "status", "reason", "scenario", "fix",
+            "options", "confirmed", "run")
+
+
+def open_questions() -> list[dict]:
+    """Findings whose latest outcome is `question`, in the order they were raised or re-raised."""
+    return [h for h in latest_outcomes().values() if h["status"] == "question"]
+
+
+def cmd_questions(_a) -> None:
+    qs = open_questions()
+    if not qs:
+        print("no open questions")
+        return
+    for n, q in enumerate(qs, 1):
+        print(f"{n}. [{q.get('unit')}] {q['title']} ({q.get('file')}{':' + str(q['line']) if q.get('line') else ''})")
+        print(f"   unclear: {q.get('scenario')}")
+        for o in q.get("options") or []:
+            print(f"   - option: {o}")
+        print(f"   recommended: {q.get('fix')}")
+
+
+def cmd_answer(a) -> None:
+    qs = open_questions()
+    if not 1 <= a.n <= len(qs):
+        sys.exit(f"no open question {a.n} (there are {len(qs)}; see `review.py questions`)")
+    if not a.reason.strip():
+        sys.exit("give the answer and where it is recorded (--reason)")
+    q = qs[a.n - 1]
+    with HISTORY.open("a") as fh:
+        fh.write(json.dumps({**{k: q.get(k) for k in ROW_KEYS}, "status": "answered", "reason": a.reason}) + "\n")
+    print(f"answered: {q['title']}")
+
+
 def cmd_open(_a) -> None:
     print(json.dumps(latest_open()))
 
@@ -216,8 +285,13 @@ def cmd_open(_a) -> None:
 USAGE = Path.home() / ".claude" / "usage" / "statusline.json"
 
 
-def quota(stop_at: float) -> dict:
-    """Usage from the status line snapshot. Unknown or stale data never blocks, but is flagged."""
+def _pct(value) -> float | None:
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def quota(stop_at: float, stop_at_5h: float | None = None) -> dict:
+    """Usage from the status line snapshot. Unknown or stale data never blocks, but is flagged.
+    The 5-hour limit is checked only when stop_at_5h is given."""
     if not USAGE.exists():
         return {"ok": True, "known": False, "note": "no status line snapshot (~/.claude/usage)"}
     try:
@@ -226,15 +300,18 @@ def quota(stop_at: float) -> dict:
         pct = {k: v.get("used_percentage") for k, v in (d.get("rate_limits") or {}).items() if isinstance(v, dict)}
     except (OSError, ValueError, TypeError, AttributeError) as e:
         return {"ok": True, "known": False, "note": f"unreadable status line snapshot: {e}"}
-    week = pct.get("seven_day")
-    if not isinstance(week, (int, float)) or isinstance(week, bool):
-        week = None
-    return {"ok": week is None or week < stop_at, "known": week is not None, "week": week,
-            "five_hour": pct.get("five_hour"), "stopAt": stop_at, "ageSeconds": age}
+    week, five = _pct(pct.get("seven_day")), _pct(pct.get("five_hour"))
+    ok = (week is None or week < stop_at) and (stop_at_5h is None or five is None or five < stop_at_5h)
+    known = week is not None or (stop_at_5h is not None and five is not None)
+    return {"ok": ok, "known": known, "week": week, "five_hour": five, "stopAt": stop_at,
+            "stopAt5h": stop_at_5h, "ageSeconds": age}
 
 
 def cmd_quota(a) -> None:
-    print(json.dumps(quota(a.stop_at)))
+    print(json.dumps(quota(a.stop_at, a.stop_at_5h)))
+
+
+FIXED_SHOWN = 20
 
 
 def cmd_show(a) -> None:
@@ -245,9 +322,17 @@ def cmd_show(a) -> None:
     print(f"# Unit {unit['id']} — {len(files)} files")
     for f in files:
         print(f"{f}  ({(ROOT / f).stat().st_size} bytes)")
-    prior = [h for h in history() if h.get("unit") == unit["id"] or h.get("file") in files]
+    names = set(files)
+    prior = [h for h in latest_outcomes().values() if h.get("unit") == unit["id"] or h.get("file") in names]
+    # Open and rejected findings are what a reviewer must not raise again; fixed ones matter less with
+    # age, so only the most recent are listed and the history stays a bounded read.
+    fixed = [h for h in prior if h["status"] == "fixed"]
+    dropped = max(0, len(fixed) - FIXED_SHOWN)
+    shown = [h for h in prior if h["status"] != "fixed"] + fixed[dropped:]
     print(f"\n# Previously reported findings in this unit ({len(prior)}) — do not re-report these")
-    for h in prior:
+    if dropped:
+        print(f"({dropped} older fixed findings not listed)")
+    for h in shown:
         reason = (h.get("reason") or "").replace("\n", " ")[:200]
         print(f"- [{h['status']}] ({h.get('lens')}) {h.get('file')}:{h.get('line', '')} {h['title']}" + (f" — {reason}" if reason else ""))
 
@@ -333,10 +418,13 @@ def recover_bases(wanted: dict[str, str], depth: int = 50) -> dict[str, str]:
 
 
 def diff_pathspec(unit: dict | None) -> list[str]:
+    """The unit's files and every lens's context files (a diff review must see a changed contract)."""
     excl = [f":(exclude,glob){p}" for p in UNITS["globalExclude"]]
     if unit is None:
         return [".", *excl]
-    return [*(f":(glob){p}" for p in unit["include"]), *(f":(exclude,glob){p}" for p in unit.get("exclude", [])), *excl]
+    ctx = sorted({p for patterns in (unit.get("context") or {}).values() for p in patterns})
+    return [*(f":(glob){p}" for p in unit["include"] + ctx),
+            *(f":(exclude,glob){p}" for p in unit.get("exclude", [])), *excl]
 
 
 def changed_files(since: str, tree: str, unit: dict) -> list[str]:
@@ -365,16 +453,35 @@ def cmd_diff(a) -> None:
     print(out or "(no changes)")
 
 
+def cmd_touched(a) -> None:
+    """Files changed since the plan snapshot, within the given units (or anywhere). The workflow runs
+    this after the read-only phases: anything listed was written by a reviewer or a verifier."""
+    run = load(RUN, None)
+    if not run:
+        sys.exit("no snapshot: run `plan` first")
+    units = {u["id"]: u for u in UNITS["units"]}
+    for uid in a.unit or []:
+        if uid not in units:
+            sys.exit(f"unknown unit {uid}")
+    specs = [diff_pathspec(units[uid]) for uid in a.unit] if a.unit else [diff_pathspec(None)]
+    now = snapshot_tree()
+    files: set[str] = set()
+    for spec in specs:
+        out = _git("diff", "--name-only", "-z", "--no-renames", run["tree"], now, "--", *spec).decode()
+        files.update(p for p in out.split("\0") if p)
+    print(json.dumps(sorted(files)))
+
+
 def cmd_record(a) -> None:
     rows = json.loads(Path(a.file).read_text())
     STATE.mkdir(parents=True, exist_ok=True)
     with HISTORY.open("a") as fh:
         for r in rows:
-            if r.get("status") not in {"fixed", "rejected", "open"}:
+            if r.get("status") not in STATUSES:
                 sys.exit(f"bad status in {r}")
             if not r.get("unit"):
                 r["unit"] = unit_of(r.get("file") or "")
-            fh.write(json.dumps({k: r.get(k) for k in ("unit", "lens", "severity", "file", "line", "title", "status", "reason", "scenario", "fix", "confirmed", "run")}) + "\n")
+            fh.write(json.dumps({k: r.get(k) for k in ROW_KEYS}) + "\n")
     print(f"recorded {len(rows)}")
 
 
@@ -387,19 +494,21 @@ def cmd_mark(a) -> None:
     advanced = 0
     for uid, lenses in ([] if a.no_advance else ledger.items()):
         for lens, h in lenses.items():
-            if h == run["hashes"].get(uid) and h != hashes.get(uid):
-                lenses[lens], advanced = hashes[uid], advanced + 1
+            now = hashes.get(uid, {}).get(lens)
+            if now is not None and h == run["hashes"].get(uid, {}).get(lens) and h != now:
+                lenses[lens], advanced = now, advanced + 1
     valid = {u["id"]: set(u["lenses"]) for u in UNITS["units"]}
     for pair in a.pairs:
         uid, _, lens = pair.partition(":")
         if lens not in valid.get(uid, set()):
             sys.exit(f"bad pair {pair}")
-        ledger.setdefault(uid, {})[lens] = hashes[uid]
+        ledger.setdefault(uid, {})[lens] = hashes[uid][lens]
     save(LEDGER, ledger)
     # Remember the tree each fully current unit was reviewed at, so a later change is reviewed as a diff.
     tree, trees = snapshot_tree(), load(TREES, {})
     for u in UNITS["units"]:
-        if u["lenses"] and u["id"] in hashes and all(ledger.get(u["id"], {}).get(l) == hashes[u["id"]] for l in u["lenses"]):
+        now = hashes.get(u["id"], {})
+        if u["lenses"] and all(now.get(l) is not None and ledger.get(u["id"], {}).get(l) == now[l] for l in u["lenses"]):
             trees[u["id"]] = tree
     save(TREES, trees)
     pin_trees(set(trees.values()))
@@ -411,32 +520,36 @@ def cmd_status(_a) -> None:
     ledger = load(LEDGER, {})
     lenses = list(UNITS["lenses"])
     total = ok = 0
-    print(f"{'unit':26}" + "".join(f"{l[:6]:>8}" for l in lenses))
+    w = max([7, *(len(l) + 2 for l in lenses)])
+    print(f"{'unit':26}" + "".join(f"{l:>{w}}" for l in lenses))
     for u in UNITS["units"]:
         row = ""
         for l in lenses:
             if l not in u["lenses"]:
-                row += f"{'-':>8}"
+                row += f"{'-':>{w}}"
                 continue
             total += 1
             h = ledger.get(u["id"], {}).get(l)
-            state = "ok" if h == hashes[u["id"]] else ("stale" if h else "never")
+            state = "ok" if h == hashes[u["id"]][l] else ("stale" if h else "never")
             ok += state == "ok"
-            row += f"{state:>8}"
+            row += f"{state:>{w}}"
         print(f"{u['id']:26}{row}")
     latest = latest_outcomes()
-    counts = {s: sum(h["status"] == s for h in latest.values()) for s in ("fixed", "rejected", "open")}
+    counts = {s: sum(h["status"] == s for h in latest.values()) for s in ("fixed", "rejected", "open", "question", "answered")}
     print(f"\ncoverage {ok}/{total} pairs current; findings so far: {counts}")
+    if counts["question"]:
+        print(f"{counts['question']} open questions for the user: `python3 scripts/review/review.py questions`")
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     pl = sub.add_parser("plan")
-    pl.add_argument("--max-units", type=int, default=6)
+    pl.add_argument("--max-units", type=int, default=8)
     pl.add_argument("--unit", action="append")
     pl.add_argument("--lens", action="append")
     pl.add_argument("--stop-at", type=float, default=80)
+    pl.add_argument("--stop-at-5h", type=float, default=None)
     sub.add_parser("show").add_argument("unit")
     df = sub.add_parser("diff")
     df.add_argument("--unit")
@@ -447,10 +560,19 @@ def main() -> None:
     mk.add_argument("--no-advance", action="store_true", help="fixer changes were not delta-reviewed")
     sub.add_parser("status")
     sub.add_parser("open")
-    sub.add_parser("quota").add_argument("--stop-at", type=float, default=80)
+    sub.add_parser("questions")
+    an = sub.add_parser("answer")
+    an.add_argument("n", type=int)
+    an.add_argument("--reason", required=True)
+    qu = sub.add_parser("quota")
+    qu.add_argument("--stop-at", type=float, default=80)
+    qu.add_argument("--stop-at-5h", type=float, default=None)
+    tc = sub.add_parser("touched")
+    tc.add_argument("--unit", action="append")
     a = p.parse_args()
     {"plan": cmd_plan, "show": cmd_show, "diff": cmd_diff, "record": cmd_record, "mark": cmd_mark,
-     "status": cmd_status, "open": cmd_open, "quota": cmd_quota}[a.cmd](a)
+     "status": cmd_status, "open": cmd_open, "quota": cmd_quota, "touched": cmd_touched,
+     "questions": cmd_questions, "answer": cmd_answer}[a.cmd](a)
 
 
 if __name__ == "__main__":

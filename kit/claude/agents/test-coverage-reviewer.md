@@ -15,5 +15,6 @@ Look for:
 5. External systems tested with fakes instead of real services. Flaky patterns: sleep-based waits without deadlines, shared mutable state between parallel tests, dependence on the wall clock or the current date.
 6. Frontend: components with logic but no tests; parsing or formatting without property tests; user journeys changed without the browser suite being updated.
 7. Regression tests that would pass without the fix they belong to.
+8. Tests of spec rules that don't name the rule's ID, when the spec uses rule IDs (`specRules` in `.agents/profile.json`). Whether the expected values match the spec is the behaviour lens's job.
 
 Report only concrete, actionable gaps, each with the file, the line of the untested code, which behaviour is untested, and a sketch of the missing test. Severity: high (a business rule or security behaviour is untested), medium (an error path is untested), low (nice to have).

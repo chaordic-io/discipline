@@ -11,7 +11,9 @@ from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import lenses as lens_profile  # noqa: E402
 import review  # noqa: E402
+import spec_rules  # noqa: E402
 
 
 class GlobTest(unittest.TestCase):
@@ -32,6 +34,15 @@ class UnitTest(unittest.TestCase):
     def test_every_unit_lens_is_known(self):
         for u in review.UNITS["units"]:
             self.assertTrue(set(u["lenses"]) <= set(review.UNITS["lenses"]), u["id"])
+
+    def test_context_only_for_lenses_the_unit_uses(self):
+        for u in review.UNITS["units"]:
+            self.assertTrue(set(u.get("context") or {}) <= set(u["lenses"]), u["id"])
+
+    def test_every_lens_has_its_checklist_installed(self):
+        for lens, path in review.UNITS["lenses"].items():
+            self.assertEqual(lens_profile.CATALOGUE.get(lens), path, lens)
+            self.assertTrue((review.ROOT / path).exists(), f"{lens}: {path} missing")
 
     def test_unit_ids_unique(self):
         ids = [u["id"] for u in review.UNITS["units"]]
@@ -104,7 +115,7 @@ class StateTest(unittest.TestCase):
         out = io.StringIO()
         with redirect_stdout(out):
             review.cmd_status(argparse.Namespace())
-        self.assertIn("{'fixed': 1, 'rejected': 0, 'open': 1}", out.getvalue())
+        self.assertIn("{'fixed': 1, 'rejected': 0, 'open': 1, 'question': 0, 'answered': 0}", out.getvalue())
         self.assertEqual([h["title"] for h in review.latest_open()], ["B"])
 
     def test_quota_unknown_never_blocks(self):
@@ -128,6 +139,72 @@ class StateTest(unittest.TestCase):
         self.assertEqual((review.quota(80)["ok"], review.quota(80)["week"]), (False, 90))
         review.USAGE.write_text('{"rate_limits": {"seven_day": {"used_percentage": "90"}}}')
         self.assertEqual((review.quota(80)["ok"], review.quota(80)["known"]), (True, False))
+
+    def test_quota_five_hour_limit_only_when_asked(self):
+        import json, time
+        snap = {"captured_at": int(time.time()),
+                "rate_limits": {"seven_day": {"used_percentage": 10}, "five_hour": {"used_percentage": 95}}}
+        review.USAGE.write_text(json.dumps(snap))
+        self.assertTrue(review.quota(80)["ok"])
+        self.assertFalse(review.quota(80, 90)["ok"])
+        self.assertTrue(review.quota(80, 96)["ok"])
+        self.assertEqual(review.quota(80, 90)["five_hour"], 95)
+        snap["rate_limits"] = {"seven_day": {"used_percentage": 10}}  # no 5-hour figure: never blocks
+        review.USAGE.write_text(json.dumps(snap))
+        self.assertTrue(review.quota(80, 1)["ok"])
+
+    def test_show_lists_open_and_rejected_and_only_recent_fixed(self):
+        unit = {"id": "u", "include": ["src/**"], "lenses": ["tests"]}
+        rows = [{"unit": "u", "file": "src/a", "title": f"fixed {i}", "status": "fixed"} for i in range(25)]
+        rows += [{"unit": "u", "file": "src/a", "title": "kept out", "status": "rejected", "reason": "by design"},
+                 {"unit": "u", "file": "src/a", "title": "pending", "status": "open"},
+                 {"unit": "u", "file": "src/a", "title": "fixed 0", "status": "open"},  # reopened: latest wins
+                 {"unit": "other", "file": "elsewhere", "title": "not ours", "status": "open"}]
+        self.write_history(*rows)
+        out = io.StringIO()
+        with mock.patch.dict(review.UNITS, {"units": [unit]}), \
+                mock.patch.object(review, "repo_files", return_value=[]), redirect_stdout(out):
+            review.cmd_show(argparse.Namespace(unit="u"))
+        text = out.getvalue()
+        self.assertIn("kept out — by design", text)
+        self.assertIn("[open] (None) src/a: pending", text)
+        self.assertIn("[open] (None) src/a: fixed 0", text)
+        self.assertIn("(4 older fixed findings not listed)", text)  # 24 fixed, 20 shown
+        self.assertNotIn("fixed 4\n", text)
+        self.assertIn("fixed 5\n", text)
+        self.assertNotIn("not ours", text)
+
+    def test_questions_are_listed_answered_and_never_carried_to_the_fixer(self):
+        import json
+        src = self.tmp / "outcomes.json"
+        q = {"unit": "u", "lens": "behaviour", "severity": "medium", "file": "src/a", "line": 4, "title": "lockout limit?",
+             "status": "question", "scenario": "spec is silent", "fix": "keep 5", "options": ["5", "10"]}
+        src.write_text(json.dumps([q, {**q, "title": "rounding?"}]))
+        with redirect_stdout(io.StringIO()):
+            review.cmd_record(argparse.Namespace(file=str(src)))
+        self.assertEqual([r["title"] for r in review.open_questions()], ["lockout limit?", "rounding?"])
+        self.assertEqual(review.carried(), [])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            review.cmd_questions(argparse.Namespace())
+        self.assertIn("1. [u] lockout limit? (src/a:4)", out.getvalue())
+        self.assertIn("- option: 10", out.getvalue())
+        with redirect_stdout(io.StringIO()):
+            review.cmd_answer(argparse.Namespace(n=2, reason="half-up; SPEC 3.2, DECISIONS 2026-11-05"))
+        self.assertEqual([r["title"] for r in review.open_questions()], ["lockout limit?"])
+        answered = review.latest_outcomes()[("u", "src/a", "rounding?")]
+        self.assertEqual((answered["status"], answered["options"]), ("answered", ["5", "10"]))
+        with self.assertRaises(SystemExit):
+            review.cmd_answer(argparse.Namespace(n=5, reason="x"))
+        with self.assertRaises(SystemExit):
+            review.cmd_answer(argparse.Namespace(n=1, reason="  "))
+
+    def test_record_rejects_unknown_status(self):
+        import json
+        src = self.tmp / "outcomes.json"
+        src.write_text(json.dumps([{"unit": "u", "file": "f", "title": "T", "status": "maybe"}]))
+        with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()):
+            review.cmd_record(argparse.Namespace(file=str(src)))
 
     def test_carried_only_actionable_rows_and_confirmed_flag(self):
         base = {"unit": "u", "lens": "tests", "severity": "low", "file": "f", "line": 3, "status": "open",
@@ -173,9 +250,9 @@ class StateTest(unittest.TestCase):
         import json
         uid = review.UNITS["units"][0]["id"]
         lens = review.UNITS["units"][0]["lenses"][0]
-        review.save(review.RUN, {"tree": "t", "hashes": {uid: "old"}, "selected": []})
+        review.save(review.RUN, {"tree": "t", "hashes": {uid: {lens: "old"}}, "selected": []})
         review.save(review.LEDGER, {uid: {lens: "old"}})
-        with mock.patch.object(review, "all_hashes", return_value={uid: "new"}), \
+        with mock.patch.object(review, "all_hashes", return_value={uid: {lens: "new"}}), \
                 mock.patch.object(review, "repo_files", return_value=[]), \
                 mock.patch.object(review, "snapshot_tree", return_value="tree-after"), redirect_stdout(io.StringIO()):
             review.cmd_mark(argparse.Namespace(pairs=[], no_advance=no_advance))
@@ -187,7 +264,7 @@ class StateTest(unittest.TestCase):
         review.save(review.RUN, {"tree": "t", "hashes": {}, "selected": []})
         review.save(review.LEDGER, {})
         pairs = [f"{u['id']}:{l}" for l in u["lenses"]]
-        with mock.patch.object(review, "all_hashes", return_value={u["id"]: "h"}), \
+        with mock.patch.object(review, "all_hashes", return_value={u["id"]: {l: "h" for l in u["lenses"]}}), \
                 mock.patch.object(review, "repo_files", return_value=[]), \
                 mock.patch.object(review, "snapshot_tree", return_value="T1"), redirect_stdout(io.StringIO()):
             review.cmd_mark(argparse.Namespace(pairs=pairs[:1], no_advance=True))
@@ -220,8 +297,8 @@ class StateTest(unittest.TestCase):
         self.assertEqual(self.mark(no_advance=True), "old")
 
 
-class GitBaseTest(unittest.TestCase):
-    """Review bases against a real temporary git repository: pinning and recovery."""
+class GitRepoCase(unittest.TestCase):
+    """A real temporary git repository with one unit `u` (UNIT) under a/."""
 
     UNIT = {"id": "u", "include": ["a/**"], "lenses": ["tests"]}
 
@@ -231,7 +308,8 @@ class GitBaseTest(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp())
         self.patches = [
             mock.patch.object(review, "ROOT", self.root),
-            mock.patch.object(review, "UNITS", {"globalExclude": ["**/*.png"], "roots": ["a/"], "units": [self.UNIT]}),
+            mock.patch.object(review, "UNITS", {"lenses": {l: f"{l}.md" for l in self.UNIT["lenses"]},
+                                                "globalExclude": ["**/*.png"], "roots": ["a/"], "units": [self.UNIT]}),
             mock.patch.object(review, "INDEX", self.root / ".git" / "review.index"),
         ]
         for p in self.patches:
@@ -254,6 +332,10 @@ class GitBaseTest(unittest.TestCase):
 
     def working_hash(self) -> str:
         return review.unit_hash(review.unit_files(self.UNIT, review.repo_files()))
+
+
+class GitBaseTest(GitRepoCase):
+    """Review bases against a real temporary git repository: pinning and recovery."""
 
     def test_hash_at_tree_equals_working_tree_hash(self):
         tree = self.commit({"a/x.txt": b"1\n", "a/y/z.txt": b"\x00bin", "b/other.txt": b"o", "a/logo.png": b"p"})
@@ -315,6 +397,173 @@ class GitBaseTest(unittest.TestCase):
             # Only the unit's added and changed files: what a diff review must read (a deleted one cannot be).
             self.assertEqual(selected[0]["changed"], ["a/new.txt", "a/x.txt"])
             self.assertEqual(json.loads(review.TREES.read_text()), {"u": base})
+
+
+class ContextTest(GitRepoCase):
+    """Lens context: a contract outside the unit makes only the contracts lens stale."""
+
+    UNIT = {"id": "u", "include": ["a/**"], "lenses": ["tests", "contracts"], "context": {"contracts": ["api/**"]}}
+
+    def test_context_change_restales_only_its_lens(self):
+        self.commit({"a/x.txt": b"1", "api/openapi.yaml": b"v1", "b/other.txt": b"o"})
+        before = review.all_hashes(review.repo_files())["u"]
+        # Without context the lens hash is the unit hash, so older ledgers stay valid.
+        self.assertEqual(before["tests"], self.working_hash())
+        (self.root / "api" / "openapi.yaml").write_bytes(b"v2")
+        (self.root / "b" / "other.txt").write_bytes(b"changed, but neither in the unit nor its context")
+        after = review.all_hashes(review.repo_files())["u"]
+        self.assertEqual(after["tests"], before["tests"])
+        self.assertNotEqual(after["contracts"], before["contracts"])
+
+    def test_diff_scope_includes_context(self):
+        base = self.commit({"a/x.txt": b"1", "api/openapi.yaml": b"v1"})
+        (self.root / "api" / "openapi.yaml").write_bytes(b"v2")
+        now = review.snapshot_tree()
+        self.assertEqual(review.changed_files(base, now, self.UNIT), ["api/openapi.yaml"])
+
+    def test_touched_lists_changes_since_plan_within_the_units(self):
+        import json
+        base = self.commit({"a/x.txt": b"1", "b/other.txt": b"o"})
+        state = Path(self.root / ".git" / "state")
+        state.mkdir()
+        with mock.patch.multiple(review, RUN=state / "run.json"):
+            review.save(review.RUN, {"tree": base, "hashes": {}, "selected": []})
+            (self.root / "a" / "x.txt").write_bytes(b"written by a reviewer")
+            (self.root / "b" / "other.txt").write_bytes(b"another session's work")
+            out = io.StringIO()
+            with redirect_stdout(out):
+                review.cmd_touched(argparse.Namespace(unit=["u"]))
+            self.assertEqual(json.loads(out.getvalue()), ["a/x.txt"])
+            out = io.StringIO()
+            with redirect_stdout(out):
+                review.cmd_touched(argparse.Namespace(unit=None))
+            self.assertEqual(json.loads(out.getvalue()), ["a/x.txt", "b/other.txt"])
+
+
+class ProfileTest(unittest.TestCase):
+    """The rules that turn .agents/profile.json into lenses (scripts/review/lenses.py)."""
+
+    BASE = {"product": "x", "kinds": ["web-app"], "languages": ["en"], "interfaces": [], "performance": "normal",
+            "overrides": {"add": {}, "remove": {}}}
+
+    def lenses(self, **changes):
+        return {l for l, on, _ in lens_profile.decide({**self.BASE, **changes}) if on}
+
+    def test_core_lenses_always_on(self):
+        core = {"security", "behaviour", "tests", "architecture", "duplication", "supply-chain"}
+        self.assertTrue(core <= self.lenses(kinds=["cli"], performance="minor"))
+
+    def test_localisation_needs_a_user_interface_and_several_languages(self):
+        self.assertNotIn("localisation", self.lenses())
+        self.assertIn("localisation", self.lenses(languages=["en", "de"]))
+        self.assertIn("localisation", self.lenses(kinds=["internal-tool"], languages=["en", "sv"]))
+        self.assertNotIn("localisation", self.lenses(kinds=["public-api", "library"], languages=["en", "de"]))
+
+    def test_contracts_need_an_interface(self):
+        self.assertNotIn("contracts", self.lenses(kinds=["static-site"]))
+        self.assertIn("contracts", self.lenses(kinds=["mobile-app"], interfaces=["mobile-backend"]))
+        self.assertIn("contracts", self.lenses(kinds=["library"], interfaces=["published-library"]))
+
+    def test_performance_off_only_when_minor(self):
+        self.assertIn("performance", self.lenses(performance="critical"))
+        self.assertNotIn("performance", self.lenses(performance="minor"))
+
+    def test_overrides_win_and_need_a_reason(self):
+        on = self.lenses(overrides={"add": {"localisation": "launching in Germany next quarter"},
+                                    "remove": {"duplication": "generated SDK only"}})
+        self.assertIn("localisation", on)
+        self.assertNotIn("duplication", on)
+        with self.assertRaises(lens_profile.ProfileError):
+            self.lenses(overrides={"add": {"localisation": ""}})
+        with self.assertRaises(lens_profile.ProfileError):
+            self.lenses(overrides={"add": {"speed": "typo"}})
+
+    def test_invalid_values_are_reported_together(self):
+        with self.assertRaises(lens_profile.ProfileError) as e:
+            lens_profile.decide({**self.BASE, "kinds": ["webapp"], "interfaces": ["rest"], "performance": "fast"})
+        for word in ("webapp", "rest", "performance"):
+            self.assertIn(word, str(e.exception))
+
+    def test_spec_rules_config_is_validated_with_the_profile(self):
+        self.lenses(specRules=None)
+        self.lenses(specRules={"tests": ["**/*_test.go"], "exempt": {"R-1": "manual"}})
+        for bad in ({}, {"tests": []}, {"tests": ["x"], "pattern": "("}, {"tests": ["x"], "exempt": {"R-1": ""}}, "yes"):
+            with self.assertRaises(lens_profile.ProfileError, msg=repr(bad)):
+                self.lenses(specRules=bad)
+
+    def test_apply_keeps_units_and_drops_disabled_lenses(self):
+        units = {"lenses": dict(lens_profile.CATALOGUE), "globalExclude": [], "roots": [], "units": [
+            {"id": "web", "include": ["web/**"], "lenses": ["security", "localisation", "contracts"],
+             "context": {"contracts": ["api/**"]}},
+        ]}
+        new, removed, unused = lens_profile.apply(self.BASE, units)
+        self.assertEqual(list(new["lenses"]), ["security", "behaviour", "tests", "architecture", "duplication", "performance", "supply-chain"])
+        self.assertEqual(new["units"][0]["lenses"], ["security"])
+        self.assertNotIn("context", new["units"][0])
+        self.assertEqual(removed, {"web": ["localisation", "contracts"]})
+        self.assertEqual(unused, ["behaviour", "tests", "architecture", "duplication", "performance", "supply-chain"])
+        self.assertEqual(units["units"][0]["lenses"], ["security", "localisation", "contracts"])  # input untouched
+
+    def test_units_follow_the_profile(self):
+        """In a configured repository, units.json must match .agents/profile.json."""
+        if not lens_profile.PROFILE.exists():
+            self.skipTest("no .agents/profile.json")
+        profile = lens_profile.load_profile()
+        if not lens_profile.is_filled(profile):
+            self.skipTest(".agents/profile.json is still the template")
+        self.assertEqual(lens_profile.check(profile, review.UNITS), [])
+
+
+class SpecRulesTest(unittest.TestCase):
+    """Every spec rule pinned by a test (scripts/review/spec_rules.py)."""
+
+    def setUp(self):
+        import tempfile
+        self.root = Path(tempfile.mkdtemp())
+
+    def write(self, files: dict[str, str]) -> list[str]:
+        for name, text in files.items():
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / name).write_text(text)
+        return sorted(files)
+
+    def report(self, files, **cfg):
+        return spec_rules.report(spec_rules.config({"specRules": {"tests": ["tests/**"], **cfg}}), self.root, files)
+
+    def test_whole_ids_only(self):
+        rx = spec_rules.id_regex(spec_rules.DEFAULTS["pattern"])
+        self.assertEqual(spec_rules.ids_in("**R-3.2.1** and R-3.2, (R-10).", rx), {"R-3.2.1", "R-3.2", "R-10"})
+        self.assertEqual(spec_rules.ids_in("XR-1 R-1a R-1-b PR-2 version 1.R-3", rx), set())
+        self.assertEqual(spec_rules.ids_in("ends a sentence: R-4.", rx), {"R-4"})
+
+    def test_untested_unknown_and_stale_exempt(self):
+        files = self.write({
+            "docs/SPEC.md": "**R-1** Invoices are numbered.\n**R-2** Totals round half-up.\n**R-2.1** Per line.\n**R-3** Support replies within a day.\n",
+            "tests/invoice_test.go": "// pins R-1\nfunc TestRounding_R_2() {} // R-2\n",
+            "tests/old_test.go": "// R-9 was removed from the spec\n",
+            "src/main.go": "// R-2.1 mentioned in code, not in a test\n",
+        })
+        rep = self.report(files, exempt={"R-3": "a support promise", "R-7": "gone"})
+        self.assertEqual(rep["rules"], 4)
+        self.assertEqual(rep["untested"], ["R-2.1"])  # R-2 does not pin R-2.1; code is not a test
+        self.assertEqual(rep["unknown"], {"R-9": ["tests/old_test.go"]})
+        self.assertEqual(rep["staleExempt"], ["R-7"])
+        self.assertEqual(len(spec_rules.problems(rep)), 3)
+
+    def test_clean_report_and_missing_spec(self):
+        files = self.write({"docs/SPEC.md": "R-1 x\n", "tests/a.test.ts": "it('R-1', ...)\n"})
+        self.assertEqual(spec_rules.problems(self.report(files)), [])
+        self.assertIn("not found", spec_rules.problems(self.report(files, spec="docs/NOPE.md"))[0])
+
+    def test_spec_rules_are_pinned(self):
+        """The gate check, when the profile switches it on."""
+        if not lens_profile.PROFILE.exists():
+            self.skipTest("no .agents/profile.json")
+        profile = lens_profile.load_profile()
+        cfg = spec_rules.config(profile) if lens_profile.is_filled(profile) else None
+        if cfg is None:
+            self.skipTest("specRules is off")
+        self.assertEqual(spec_rules.problems(spec_rules.report(cfg, review.ROOT, review.repo_files())), [])
 
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")

@@ -5,8 +5,10 @@ Proves that the kit works on its own: it installs the kit into an empty, freshly
 repository and runs the review loop's own tests there, checks that the kit's texts don't depend on
 the repository the kit came from, and that every path the texts mention exists after installing.
 
-When the kit sits inside a repository that also has the live copies (scripts/review/,
-.claude/workflows/review-loop.js), it also checks that the kit's copies have not drifted from them.
+The kit is the master copy of the review scripts and the workflow. When it sits inside a repository
+that has installed copies (scripts/review/, .claude/workflows/review-loop.js), it also checks that
+those have not drifted from the kit; outside such a repository (e.g. the kit's own repository) the
+drift tests skip.
 """
 from __future__ import annotations
 
@@ -23,8 +25,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import install  # noqa: E402
 
-# Copied verbatim from the source repository; their test data uses synthetic example paths.
-VERBATIM = {"scripts/review/review.py", "scripts/review/test_review.py"}
+# Installed verbatim into every repository; their test data uses synthetic example paths.
+VERBATIM = {"scripts/review/review.py", "scripts/review/test_review.py", "scripts/review/lenses.py",
+            "scripts/review/spec_rules.py"}
 
 # Names that would tie the kit to the repository it was extracted from. Worked examples live in
 # stacks/ and may name it; nothing in kit/ or BOOTSTRAP.md may.
@@ -75,6 +78,49 @@ class InstallTest(unittest.TestCase):
         status = subprocess.run([sys.executable, "scripts/review/review.py", "status"], cwd=self.repo, capture_output=True, text=True)
         self.assertEqual(status.returncode, 0, status.stderr)
 
+    def test_a_filled_profile_selects_the_lenses_and_the_tests_hold_it(self) -> None:
+        install.install(self.repo)
+        (self.repo / "src").mkdir()
+        (self.repo / "src/main.txt").write_text("hello\n")
+        lenses = [sys.executable, "scripts/review/lenses.py"]
+        tests = [sys.executable, "-m", "unittest", "discover", "-s", "scripts/review", "-q"]
+        run = lambda cmd: subprocess.run(cmd, cwd=self.repo, capture_output=True, text=True)
+        self.assertEqual(run(lenses + ["check"]).returncode, 2, "the template profile must be refused")
+        (self.repo / ".agents/profile.json").write_text(json.dumps({
+            "product": "A static marketing site", "kinds": ["static-site"], "languages": ["en"],
+            "interfaces": [], "performance": "minor", "data": "none", "overrides": {"add": {}, "remove": {}}}))
+        self.assertEqual(run(lenses + ["check"]).returncode, 1)
+        failing = run(tests)
+        self.assertNotEqual(failing.returncode, 0, "the gate must fail while units.json disagrees with the profile")
+        self.assertIn("test_units_follow_the_profile", failing.stderr)
+        applied = run(lenses + ["apply"])
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        units = json.loads((self.repo / "scripts/review/units.json").read_text())
+        self.assertEqual(list(units["lenses"]), ["security", "behaviour", "tests", "architecture", "duplication", "supply-chain"])
+        passing = run(tests)
+        self.assertEqual(passing.returncode, 0, passing.stdout + passing.stderr)
+
+    def test_spec_rules_switched_on_fail_the_tests_until_every_rule_is_pinned(self) -> None:
+        install.install(self.repo)
+        (self.repo / "tests").mkdir()
+        lenses = [sys.executable, "scripts/review/lenses.py"]
+        tests = [sys.executable, "-m", "unittest", "discover", "-s", "scripts/review", "-q"]
+        run = lambda cmd: subprocess.run(cmd, cwd=self.repo, capture_output=True, text=True)
+        (self.repo / ".agents/profile.json").write_text(json.dumps({
+            "product": "Invoicing", "kinds": ["web-app"], "languages": ["en"], "interfaces": [],
+            "performance": "normal", "data": "customer data", "overrides": {"add": {}, "remove": {}},
+            "specRules": {"tests": ["tests/**"]}}))
+        self.assertEqual(run(lenses + ["apply"]).returncode, 0)
+        spec = self.repo / "docs/SPEC.md"
+        spec.write_text(spec.read_text() + "\n**R-1** Invoice numbers have no gaps.\n")
+        (self.repo / "tests/test_numbering.txt").write_text("placeholder\n")
+        failing = run(tests)
+        self.assertNotEqual(failing.returncode, 0)
+        self.assertIn("R-1", failing.stderr)
+        (self.repo / "tests/test_numbering.txt").write_text("pins R-1\n")
+        passing = run(tests)
+        self.assertEqual(passing.returncode, 0, passing.stdout + passing.stderr)
+
     def test_never_overwrites(self) -> None:
         (self.repo / "CLAUDE.md").write_text("mine\n")
         result = install.install(self.repo)
@@ -119,29 +165,42 @@ class TextTest(unittest.TestCase):
                 path = m.group(1) or m.group(2)
                 self.assertTrue((HERE / path).exists(), f"{name} mentions {path}")
 
-    def test_workflow_lenses_match_the_units_template(self) -> None:
-        workflow = (HERE / "kit/claude/workflows/review-loop.js").read_text()
-        block = workflow[workflow.index("const LENS_FILE = {"):]
-        block = block[: block.index("}")]
-        lens_files = dict(re.findall(r"(\w+): '([^']+)'", block))
+    def test_every_lens_in_the_catalogue_has_its_checklist_and_the_example_units_use_them_all(self) -> None:
+        sys.path.insert(0, str(HERE / "kit/scripts/review"))
+        try:
+            import lenses
+        finally:
+            sys.path.pop(0)
         units = json.loads((HERE / "kit/scripts/review/units.json").read_text())
-        self.assertEqual(lens_files, units["lenses"])
-        for path in lens_files.values():
-            self.assertEqual(install.target_of(path.replace(".claude/", "claude/", 1)), path)
-            self.assertTrue((HERE / "kit" / path.replace(".claude/", "claude/", 1)).exists(), path)
+        self.assertEqual(units["lenses"], lenses.CATALOGUE)
+        self.assertEqual({l for u in units["units"] for l in u["lenses"]}, set(lenses.CATALOGUE))
+        for path in lenses.CATALOGUE.values():
+            kit_path = path.replace(".claude/", "claude/", 1)
+            self.assertEqual(install.target_of(kit_path), path)
+            self.assertTrue((HERE / "kit" / kit_path).exists(), path)
+
+    def test_workflow_takes_its_lenses_from_the_plan_and_runs_reviewers_read_only(self) -> None:
+        workflow = (HERE / "kit/claude/workflows/review-loop.js").read_text()
+        self.assertIn("const LENS_FILE = plan.lenses", workflow)
+        self.assertIn("const READER = 'review-reader'", workflow)
+        self.assertTrue((HERE / "kit/claude/agents/review-reader.md").exists())
+        for label in ("review:", "verify:", "verify2:", "delta:"):
+            call = workflow[workflow.index(f"label: `{label}"):]
+            self.assertIn("agentType: READER", call[: call.index("\n")], label)
 
 
 class DriftTest(unittest.TestCase):
     """Only inside a repository that has the live copies; skipped once the kit stands alone."""
 
-    ROOT = HERE.parents[1]
+    # The kit installed as <repo>/.agents/bootstrap/ has the repository two levels up.
+    ROOT = HERE.parents[1] if len(HERE.parents) > 1 else HERE
 
     def test_review_scripts_match_the_live_copies(self) -> None:
         for rel in sorted(VERBATIM):
             live = self.ROOT / rel
             if not live.exists():
                 self.skipTest("no live copy next to the kit")
-            self.assertEqual((HERE / "kit" / rel).read_text(), live.read_text(), f"{rel} drifted; copy the live version into kit/")
+            self.assertEqual((HERE / "kit" / rel).read_text(), live.read_text(), f"{rel} differs from the kit (the master copy): copy the kit's version into the repository, or bring the repository's improvement back into kit/")
 
     def test_workflow_matches_the_live_copy_outside_the_project_block(self) -> None:
         live = self.ROOT / ".claude/workflows/review-loop.js"
@@ -150,12 +209,12 @@ class DriftTest(unittest.TestCase):
 
         def without_project(text: str) -> str:
             start = text.index("// ---------------------------------------------------------------- Project configuration")
-            return text[:start] + text[text.index("// Lens → checklist."):]
+            return text[:start] + text[text.index("\nconst QUOTA = {"):]
 
         self.assertEqual(
             without_project((HERE / "kit/claude/workflows/review-loop.js").read_text()),
             without_project(live.read_text()),
-            "review-loop.js drifted; copy the live version into kit/ and keep its generic PROJECT block",
+            "review-loop.js differs from the kit (the master copy) outside the PROJECT block: copy the kit's version in and keep the project's PROJECT block, or bring the improvement back into kit/",
         )
 
 

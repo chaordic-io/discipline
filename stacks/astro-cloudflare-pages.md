@@ -52,4 +52,7 @@ in a container because the agent machine has no browser; results are copied back
 
 ## Review units
 
-One unit `site` with the lenses security, tests, architecture, duplication and localisation.
+One unit `site` with the lenses security, tests, architecture, duplication and localisation, and a
+`site-dependencies` unit (`package.json`, the lockfile, the deploy script) with supply-chain and
+security. As a project of its own, its profile would be: kind `static-site`; several languages;
+no interfaces; performance `minor`. That turns localisation on, and performance and contracts off.

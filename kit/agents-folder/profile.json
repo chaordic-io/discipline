@@ -1,0 +1,14 @@
+{
+  "_comment": "The project profile: what kind of product this is. scripts/review/lenses.py turns it into the review lenses (show / apply / check). Fill it from the bootstrap questions; allowed values are listed in scripts/review/lenses.py. Re-run `lenses.py apply` whenever it changes. 'specRules' is null, or switches on the gate check that every business rule in the spec is pinned by a test (see scripts/review/spec_rules.py).",
+  "product": "<PROJECT>: one line on what it is and who it is for",
+  "kinds": [],
+  "languages": ["en"],
+  "interfaces": [],
+  "performance": "normal",
+  "data": "<PROJECT>: the sensitive data it holds (personal data, payments, health, several tenants), or none",
+  "specRules": null,
+  "overrides": {
+    "add": {},
+    "remove": {}
+  }
+}

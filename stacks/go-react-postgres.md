@@ -81,6 +81,11 @@ migrations, the domain packages, web feature folders, the e2e suite, and one inf
 Dockerfile, Makefile, scripts). Security-sensitive units first. Lenses: no localisation on pure domain
 code; translation catalogues may be checked by script.
 
+Its profile (`.agents/profile.json`) would be: kinds `web-app`, `backend-service`; six languages;
+interfaces `frontend-backend`; performance `normal`; personal data of several tenants. That turns every
+lens on. The API units list the exported OpenAPI spec as `contracts` context, and a `dependencies`
+unit holds `go.mod`/`go.sum`, `package.json`/`package-lock.json`, the Dockerfile and the CI config.
+
 ## The workflow's PROJECT block
 
 ```js
@@ -92,8 +97,8 @@ const PROJECT = {
   affectedTests: 'the Go packages you changed and those importing them (`PKGS="./internal/<pkg>/..." make test-api-docker`), and the web test files covering changed web files (`cd web && npx vitest run <paths>`)',
   fixRules: 'Follow CLAUDE.md strictly (tests for every change, property/fuzz tests where applicable, testcontainers for DB code, never weaken lint configs, no unexplained nolint/eslint-disable). Update docs/SPEC.md if behaviour changes.',
   targetedChecks: '`PKGS=./internal/<pkg>/... make test-api-docker` (database tests) or `cd api && go test ./internal/domain/...` (pure packages), `cd web && npx vitest run <path>`, `make lint-api`, `make lint-web`',
-  scriptCheckable: 'non-English translation catalogues (web/src/i18n/locales/<lang>/*.json, api/internal/i18n/locales/<lang>.json) may be checked by script (key and placeholder parity, untranslated copies)',
-  deltaFocus: 'bugs or regressions introduced, new code without tests, hard-coded user-visible strings or missing translations in any of the six locales, new duplication, security problems, layering violations',
+  scriptCheckable: 'lockfiles (go.sum, package-lock.json: check them through the manifest and `git diff`) and non-English translation catalogues (web/src/i18n/locales/<lang>/*.json, api/internal/i18n/locales/<lang>.json: key and placeholder parity, untranslated copies)',
+  deltaFocus: 'bugs or regressions introduced, new code without tests, hard-coded user-visible strings or missing translations in any of the six locales',
 }
 ```
 

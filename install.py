@@ -128,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\nStill to adapt (ADAPT markers or <PROJECT> placeholders):")
         for f in result["adapt"]:
             print(f"  {f}")
-    print("\nNext: follow BOOTSTRAP.md, 'Set up a repository', from step 3.")
+    print("\nNext: follow BOOTSTRAP.md, 'Set up a repository', from step 3 (the product questions).")
     return 0
 
 

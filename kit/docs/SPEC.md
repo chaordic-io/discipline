@@ -15,7 +15,12 @@ the same change. `docs/DECISIONS.md` records why each rule exists.
 
 <!-- One numbered subsection per area (e.g. 3.1 Money, 3.2 Currency, 3.3 Time units, …). For each:
 the rules, the validation (with error codes), the API endpoints, the edge cases, and the tests that pin
-them. Mark country- or customer-specific behaviour as configuration or a module, never a branch. -->
+them. Mark country- or customer-specific behaviour as configuration or a module, never a branch.
+Write each rule so that a reviewer can check the code against it: the condition, the result, the
+boundaries, and a worked example with numbers where there is arithmetic. When `specRules` is on in
+.agents/profile.json, start each rule with its ID in bold (R-<section>.<number>, e.g. the second rule
+of 3.2 gets the ID R- followed by 3.2.2), never reuse an ID, and name the ID in every test that pins
+the rule; the gate fails on a rule no test names. -->
 
 ## 4. Architecture
 

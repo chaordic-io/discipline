@@ -15,6 +15,8 @@ Read in this order:
    sessions, the review loop, reporting.
 4. [`ENVIRONMENT.md`](ENVIRONMENT.md): the machine, containers, tool versions, gotchas.
 5. [`HISTORY.md`](HISTORY.md): what was built in what order, with pointers into `docs/DECISIONS.md`.
+6. [`profile.json`](profile.json): what kind of product this is; it decides which review lenses run
+   (`python3 scripts/review/lenses.py show`).
 
 The documents these files point to instead of repeating:
 

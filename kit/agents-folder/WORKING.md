@@ -105,6 +105,17 @@ terminal multiplexer for agents):
 - A finding is rejected only with a written reason; reviewers see the history, so nothing is repeated.
 - Findings left `open` by the delta limit are fixed in a follow-up, with tests, and recorded as fixed.
 - New directory or package: add it to a unit in `units.json`; the gate fails on uncovered files.
+- The product changed shape (a second language, a mobile client, a public API, a published package):
+  update `.agents/profile.json`, run `python3 scripts/review/lenses.py apply`, add the new lens to the
+  units where it applies, and record it in `docs/DECISIONS.md`. The gate fails until units and profile
+  agree.
+- A run that reports `questions`: add them to "Open questions for the user" in `STATUS.md` and ask
+  them in the next batch, each with its options and the recommendation. When answered: update
+  `docs/SPEC.md`, add a `docs/DECISIONS.md` entry, change the code if the answer differs from the
+  current behaviour (with a test that names the rule), then `review.py answer N --reason "..."`.
+- A run that reports `strayWrites` fixed and marked nothing: look at those files with `git diff`, keep
+  or revert them, and run again. A run that reports `disputed` findings sent serious findings to the
+  fixer although one verifier refuted them; read the fixer's reasoning for each.
 - Saved workflows load at session start. After editing `.claude/workflows/review-loop.js`, run it by
   its script path until the next session, or the old version runs.
 

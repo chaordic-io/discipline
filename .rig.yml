@@ -1,0 +1,87 @@
+# Rig configuration
+# See: https://github.com/wfaler/rig for documentation
+
+languages:
+  # Example configurations:
+  node:
+    version: "lts"           # "lts", "latest", or specific version like "20"
+  #   build_systems:           # Multiple build systems supported
+  #     yarn: true             # "true" or "latest" for latest version
+  #     pnpm: "8.15"           # or specify a version
+  python:
+    version: "3.14"
+    build_systems:
+  #     poetry: "1.8.0"
+      uv: true               # or specify version like "0.6.0"
+  #     pip: true              # pip comes with Python
+  # java:
+  #   version: "21"
+  #   build_systems:
+  #     gradle: "8.5"
+  #     maven: true
+  #     sbt: "1.9.8"
+  go:
+    version: "1.27"
+  rust:
+    version: "latest"
+  # ruby:
+  #   version: "3.3"
+  #   build_systems:
+  #     bundler: true
+
+ports: []
+  # Port mappings in "host:container" or "port" format:
+  # - "8080:8080"
+  # - "3000"
+
+env: {}
+  # Environment variables (supports ${VAR} expansion from host):
+  # API_KEY: "${API_KEY}"
+  # DATABASE_URL: "postgres://localhost:5432/dev"
+
+# Default shell: zsh (default, with oh-my-zsh), bash, or fish
+# shell: zsh
+
+# Markdown server (renders .md files as HTML with hot-reload)
+# Enabled by default on port 3030. Serves README.md at root.
+markdown_server:
+  enabled: false                       # set to false to disable
+#   port: 3030                           # default: 3030
+
+# herdr integration (https://herdr.dev)
+# When rig runs inside a herdr-managed pane, it auto-sets HERDR_AGENT, mounts
+# the herdr control socket into the container, and installs the herdr CLI +
+# agent skill so the containerized agent can drive herdr. Enabled by default.
+# herdr:
+#   enabled: false                       # set to false to skip herdr CLI/skill
+#   agent: claude                        # HERDR_AGENT value: claude, gemini, codex
+
+# VS Code in browser (code-server)
+# code_server:
+#   enabled: true
+#   port: 8080                           # default: 8080
+#   theme: "Default Dark Modern"         # VS Code theme
+#   extensions:                          # extensions to install
+#     # General
+#     - github.copilot
+#     - eamodio.gitlens
+#     # Go
+#     - golang.go
+#     # Node/TypeScript
+#     - dbaeumer.vscode-eslint
+#     - esbenp.prettier-vscode
+#     - ms-vscode.vscode-typescript-next
+#     # Python
+#     - ms-python.python
+#     - ms-python.vscode-pylance
+#     - ms-python.debugpy
+#     # Java
+#     - redhat.java
+#     - vscjava.vscode-java-debug
+#     - vscjava.vscode-java-dependency
+#     - vscjava.vscode-maven
+#     - vscjava.vscode-gradle
+#     # Rust
+#     - rust-lang.rust-analyzer
+#     # Ruby
+#     - shopify.ruby-lsp

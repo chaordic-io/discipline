@@ -1,10 +1,14 @@
 {
-  "_comment": "Review units for the review-loop workflow (ADAPT: replace the example units with your repository's). Each unit is reviewed by the listed lenses; a (unit, lens) pair is re-reviewed only when the unit's content hash changes. Order = priority for never-reviewed units: put security-sensitive units first. Globs are fnmatch patterns on repo-relative paths ('*' matches within one path segment, '**' across segments). 'exclude' wins over 'include'. Every file under 'roots' must belong to exactly one unit (scripts/review/test_review.py fails otherwise). Generated files go in globalExclude.",
+  "_comment": "Review units for the review-loop workflow (ADAPT: replace the example units with your repository's). The 'lenses' map is written by `python3 scripts/review/lenses.py apply` from .agents/profile.json; don't edit it by hand. Each unit is reviewed by the listed lenses; a (unit, lens) pair is re-reviewed only when its content hash changes. 'context' lists, per lens, files outside the unit whose changes also make that lens stale (e.g. the API contract for the contracts lens). Order = priority for never-reviewed units: put security-sensitive units first. Globs are fnmatch patterns on repo-relative paths ('*' matches within one path segment, '**' across segments). 'exclude' wins over 'include'. Every file under 'roots' must belong to exactly one unit (scripts/review/test_review.py fails otherwise). Generated files and build output go in globalExclude; lockfiles do not: they belong to the dependencies unit, so a dependency change is reviewed.",
   "lenses": {
     "security": ".claude/agents/security-auditor.md",
+    "behaviour": ".claude/agents/behaviour-reviewer.md",
     "tests": ".claude/agents/test-coverage-reviewer.md",
     "architecture": ".claude/agents/architecture-reviewer.md",
     "duplication": ".claude/agents/duplication-reviewer.md",
+    "performance": ".claude/agents/performance-reviewer.md",
+    "supply-chain": ".claude/agents/supply-chain-reviewer.md",
+    "contracts": ".claude/agents/contract-reviewer.md",
     "localisation": ".claude/agents/localisation-reviewer.md"
   },
   "globalExclude": [
@@ -15,15 +19,19 @@
     "**/dist/**",
     "**/coverage/**",
     "**/*.png",
-    "**/*.svg",
-    "**/package-lock.json"
+    "**/*.svg"
   ],
   "roots": [
     "src/",
     "tests/",
+    "api/",
     "scripts/",
     ".claude/workflows/",
-    "Makefile"
+    ".github/",
+    "Makefile",
+    "Dockerfile",
+    "package.json",
+    "package-lock.json"
   ],
   "units": [
     {
@@ -34,9 +42,30 @@
       ],
       "lenses": [
         "security",
+        "behaviour",
         "tests",
         "architecture",
-        "duplication"
+        "duplication",
+        "performance",
+        "contracts"
+      ],
+      "context": {
+        "contracts": [
+          "api/**"
+        ]
+      }
+    },
+    {
+      "id": "dependencies",
+      "include": [
+        "package.json",
+        "package-lock.json",
+        "Dockerfile",
+        ".github/**"
+      ],
+      "lenses": [
+        "supply-chain",
+        "security"
       ]
     },
     {
@@ -51,10 +80,28 @@
       ],
       "lenses": [
         "security",
+        "behaviour",
         "tests",
         "architecture",
         "duplication",
+        "performance",
+        "contracts",
         "localisation"
+      ],
+      "context": {
+        "contracts": [
+          "api/**"
+        ]
+      }
+    },
+    {
+      "id": "api-contract",
+      "include": [
+        "api/**"
+      ],
+      "lenses": [
+        "contracts",
+        "architecture"
       ]
     },
     {
