@@ -24,69 +24,37 @@ then the review loop can't run.
 
 ## Why discipline
 
-An agent can write a feature in minutes. What it doesn't bring on its own is the discipline around
-the code:
-- remembering yesterday's decisions;
-- knowing what "done" means;
-- checking its work with fresh eyes;
-- asking instead of guessing when the spec is silent;
-- leaving the repository in a state the next session, or the next person, can pick up.
+An agent can write a feature in minutes. What it doesn't bring is the discipline around the code:
+remembering yesterday's decisions, knowing what "done" means, checking its work with fresh eyes, asking
+instead of guessing, and leaving the repository so the next session can pick it up. Without that,
+speed turns into drift.
 
-Without that, speed turns into drift:
-- work declared finished because it compiles;
-- tests that pass rather than check;
-- product decisions made quietly in a fix;
-- context lost to every crash or new session;
-- a different set of habits in every repository.
+**discipline** packages that discipline as a Claude Code plugin: a working method you install once and
+apply to any repository. It's opinionated about how work gets done and neutral about the stack.
 
-**discipline** is that discipline, packaged as a Claude Code plugin. It is a working method you install
-once and apply to any repository, whatever its stack:
+- **A spec-driven harness.** The spec and your recorded decisions are the contract. Code is reviewed
+  against them and business rules are pinned to tests. Where the spec is silent, agents ask you, with
+  options and a recommendation, instead of deciding for you. An assumption made to keep work moving is
+  marked and flagged by the gate until you confirm it.
+- **One gate defines done.** A single deterministic check runs the same in every session and in CI.
+  Failures are investigated to their root cause, never re-run until green.
+- **A deterministic multi-agent review graph.** Read-only reviewers fan out in parallel, through the
+  lenses that fit the product (security, behaviour, tests, architecture, performance, supply chain,
+  contracts, AI, localisation). Skeptics try to refute every finding, one fixer fixes, and the fix is
+  reviewed again. The control flow lives in code, not in the agents: a graph, not a swarm.
+- **Incremental, so it can run all the time.** Unchanged code is never reviewed twice, and changed code
+  is reviewed as a diff.
+- **Evidence, not just assurance.** Every review leaves a record in the repository: what was reviewed
+  through which lens, each finding with its failure scenario, fix and verdict, and every question with
+  its answer. `discipline review evidence` turns it into a report for a pull request or an audit.
+- **Context engineering by default.** Status, decisions, the spec and the review state are small files
+  in the repository, so a crashed session, a new machine or a new teammate picks up where things
+  stopped. Branches keep their own progress, and review state merges without conflicts.
+- **Evals where the product uses AI.** Every prompt has an eval set, checked by the gate.
+- **Principles you can cite.** Engineering principles E1–E10 and stack criteria S1–S7 have stable
+  numbers, so every decision and finding says what it rests on.
 
-- **Done means verified.** One deterministic gate is the only definition of done, and it runs the same
-  in every session and in CI. Every failure is investigated to its root cause, never re-run until green.
-- **Independent review, chosen for the product.** Read-only reviewers (security, behaviour, tests,
-  architecture, performance, supply chain, API contracts, AI, localisation) look at the code through
-  the lenses that fit what you're building. A skeptic verifies every finding, one fixer fixes them,
-  and the fix is reviewed again. The reviewers can't change the code they review.
-- **Intent stays with you.** The code is checked against the written spec and your recorded decisions.
-  Where they don't settle a question, agents first check whether you've answered it before, and
-  otherwise come back to you with options and a recommendation, rather than deciding for you or
-  bending a test until it passes. When work can't wait, they proceed on the most conservative
-  assumption, marked in the spec and flagged by the gate until you confirm it: no assumption becomes
-  "the spec" unnoticed.
-- **Evidence, not just assurance.** The adversarial review leaves a record in the repository: which
-  code was reviewed through which lens and when, down to the exact content; every finding with its
-  failure scenario, the fix, and the skeptic's reasoning; every rejection with its reason; every
-  question and its answer. `discipline review evidence` turns it into a report for a pull request or an
-  audit, and the regression tests each fix adds keep proving it.
-- **Cheap enough to run all the time.** Review is incremental: unchanged code is never reviewed twice,
-  and changed code is reviewed as a diff. So agents can run it on their own at the end of every phase.
-- **Nothing important lives only in a chat.** Status, decisions, the spec and the review state are
-  files in the repository. A crashed session, a new machine or a new teammate picks up exactly where
-  things stopped.
-- **Built for teams.** Branches keep their own progress, decisions are one file each, and the review
-  state merges without conflicts. A review done on a branch still counts after the merge.
-- **Principles you can cite.** Engineering principles (E1–E10) and stack-selection criteria (S1–S7)
-  with stable numbers, so every decision and review finding says which one it rests on.
-
-What it achieves: agents you can leave working, whose output you can trust and trace back to a reason,
-in a repository that gets more consistent over time rather than less. It's opinionated about *how*
-work gets done and *why* things are built a certain way, and neutral about the stack: no language,
-framework or library is prescribed.
-
-### In current terms
-
-- **A spec-driven harness for Claude Code.** The spec is the contract agents work to, and discipline
-  *enforces* it: code is reviewed against it, its rules can be pinned to tests, and nothing an agent
-  assumes becomes part of it unnoticed.
-- **A deterministic multi-agent review graph.** Reviewers fan out in parallel, one per unit; skeptics
-  try to refute every finding; a single fixer works under strict rules; and a bounded fix-and-re-review
-  cycle closes the loop. The control flow lives in code, not in the agents, so every run follows the
-  same path and leaves evidence. A graph, deliberately not a swarm: no agent decides who acts next.
-- **Context engineering by default.** Project memory lives in the repository, in files kept small on
-  purpose: a snapshot of where things stand, decisions read by search, guides loaded only when needed.
-- **Evals where the product uses AI.** Every prompt has an eval set with a facet per stage, checked by
-  the gate.
+The result: agents you can leave working, whose output you can trust and trace back to a reason.
 
 ### What it costs
 
@@ -100,6 +68,9 @@ discipline trades some speed for trust, and it's worth being plain about the tra
   re-reviewers. As an illustration (one small sample project, not a benchmark): the first run over
   three units took about 13 agent calls and six minutes; a later run, after a small change, took 5.
   Incremental review keeps this down, since unchanged code is never reviewed again, but it isn't free.
+  It is likely cheaper over the life of a feature, though: a bug caught in review costs one fix, while
+  one found later costs a fix, the regression that fix causes, and the fix after that, each with the
+  context rebuilt from scratch.
 - **Questions wait for people.** When the spec doesn't settle something that matters, the work on it
   waits for an answer instead of being guessed. That is the point, and it can still hold a feature up.
 
