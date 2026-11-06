@@ -89,6 +89,25 @@ before a release, and fails below its thresholds.
 The capability checklist in /discipline:stack illustrates each item with tools for Go, TypeScript,
 Python, Rust and the JVM.
 
+### Existing code: extend the gate, ratchet what it can't pass yet
+
+On an existing project, add to the gate the project already has (its `make check`, npm scripts, CI
+pipeline) rather than creating a second one: `discipline check` becomes one more step, and the review
+loop's `gate` in `project.json` is that existing command.
+
+A check the existing code fails in many places (coverage, duplication, strict lint, vulnerability
+findings in old dependencies) is never "fixed until the gate passes" as part of setup: that rewrites
+code nobody asked to change. Bootstrap asks, per check, with these options:
+
+- **Ratchet (recommended):** the gate passes at today's level and fails when it gets worse. Use the
+  tool's own baseline where it has one (a coverage threshold set to today's figure, `--max-warnings`
+  set to today's count, a linter's or type checker's baseline file, a duplication threshold, a
+  vulnerability allowlist where each entry has an expiry date). Commit the baseline; record it in the
+  setup decision, with the figures. Lower it as code is touched: never raise it to let a change through.
+- **Fix now:** a planned piece of work of its own, on the roadmap in `.agents/STATUS.md`, not part of
+  setup.
+- **Leave it out:** recorded in the setup decision with the reason, so it is a choice, not an omission.
+
 ## The usage guard (optional)
 
 `discipline review quota` reads `~/.claude/usage/statusline.json`, which the status-line script writes:

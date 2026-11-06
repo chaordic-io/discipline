@@ -33,7 +33,7 @@ WRITING_BASH = [
     (r"(--fix\b|--write\b|\s-w\b(?=.*\b(gofmt|goimports|prettier)\b)|\bgofmt\b[^|;&]*\s-w\b|\bruff\s+format\b|\bblack\b(?![^|;&]*--check)|\bprettier\b[^|;&]*--write)",
      "formats or fixes files"),
     (r"(\s-u\b|--update-?snapshots?\b|--updateSnapshot\b|--update-goldens?\b|\s-update\b|--snapshot-update\b)", "updates snapshots or golden files"),
-    (r"\bdiscipline\s+(review\s+(plan|record|mark|answer)|lenses\s+apply|init|decisions\s+(new|index)|work(?!\s+--list))\b",
+    (r"\bdiscipline\s+(review\s+(plan|record|mark|baseline|answer)|lenses\s+apply|init|decisions\s+(new|index)|work(?!\s+--list))\b",
      "writes the review loop's state or the project's records"),
 ]
 

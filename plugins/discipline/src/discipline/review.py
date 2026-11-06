@@ -19,13 +19,17 @@ Commands (all print to stdout; `show`, `diff`, `status` are read-only):
   diff [--unit U] [--since TREE]
                        unified diff since the `plan` snapshot (or TREE), optionally limited to a unit
   record FILE.json     append finding outcomes [{unit,lens,file,line,title,status,reason}]
+  baseline --reason R [--unit ID ...]
+                       accept the current content of every pair not yet current, without
+                       reviewing it (adopting discipline on existing code: from now on only
+                       changes are reviewed, as diffs); shown as `baseline`, never as `ok`
   mark UNIT:LENS ...   mark pairs reviewed at the current content; also advance
                        pairs that were current at `plan` time (their only changes since
                        are the fixer's, which the delta review covered)
   checklist LENS       print a lens's checklist (from the plugin), for reviewers
   evidence [--since D] a Markdown report: coverage per unit and lens with dates, and every finding with
                        its scenario, fix, verifier's reasoning and the snapshot it was reviewed at
-  status               coverage matrix (units x lenses): ok / stale / never; also open questions
+  status               coverage matrix (units x lenses): ok / baseline / stale / never; also open questions
                        and handover files over budget (`discipline handover`)
   questions            open questions for the user (numbered): behaviour the spec, decisions and
                        proposals don't settle; the fixer never acts on them
@@ -206,6 +210,21 @@ def reviewed() -> dict[str, dict[str, list[str]]]:
     return out
 
 
+def baselined() -> set[tuple[str, str, str]]:
+    """(unit, lens, hash) accepted by `baseline` and never actually reviewed at that content."""
+    base, real = set(), set()
+    for r in read_jsonl(LEDGER):
+        (base if r.get("baseline") else real).add((r["unit"], r["lens"], r["hash"]))
+    return base - real
+
+
+def pair_state(uid: str, lens: str, now: str, ledger: dict, base: set) -> str:
+    seen = ledger.get(uid, {}).get(lens, [])
+    if now not in seen:
+        return "stale" if seen else "never"
+    return "baseline" if (uid, lens, now) in base else "ok"
+
+
 def latest_trees() -> dict[str, str]:
     """{unit: the most recent tree the unit was fully reviewed at}."""
     return {r["unit"]: r["tree"] for r in read_jsonl(TREES)}
@@ -230,19 +249,24 @@ def cmd_plan(a) -> None:
     files = repo_files()
     hashes = all_hashes(files)
     ledger = reviewed()
+    base = baselined()
     trees = latest_trees()
     pending, lost = [], {}
     for u in UNITS["units"]:
         if a.unit and u["id"] not in a.unit:
             continue
         done = ledger.get(u["id"], {})
-        lenses = [l for l in u["lenses"] if (not a.lens or l in a.lens) and hashes[u["id"]][l] not in done.get(l, [])]
+        # A unit named on purpose also gets its baselined pairs reviewed, in full.
+        unbased = [l for l in u["lenses"] if a.unit and (u["id"], l, hashes[u["id"]][l]) in base]
+        lenses = [l for l in u["lenses"] if (not a.lens or l in a.lens)
+                  and (hashes[u["id"]][l] not in done.get(l, []) or l in unbased)]
         if lenses:
             seen = any(done.get(l) for l in u["lenses"])
-            entry = {"unit": u["id"], "lenses": lenses, "reason": "changed" if seen else "never reviewed",
+            entry = {"unit": u["id"], "lenses": lenses,
+                     "reason": "baseline, reviewed in full on request" if unbased else ("changed" if seen else "never reviewed"),
                      "files": len(unit_files(u, files))}
             # Every pending lens reviewed before at a recorded tree: review only the diff since then.
-            if all(done.get(l) for l in lenses):
+            if not unbased and all(done.get(l) for l in lenses):
                 since = trees.get(u["id"])
                 if since and tree_exists(since):
                     entry["since"] = since
@@ -370,10 +394,12 @@ def evidence(since: str | None = None) -> str:
     for r in rows:
         last[(r["unit"], r["lens"])] = r.get("at", 0)
     ledger = reviewed()
+    base = baselined()
     lenses = list(UNITS["lenses"])
     out = ["# Review evidence", ""]
     out += ["## Coverage", "", "Each cell: the state of the (unit, lens) pair, and when it was last reviewed. "
-            "`ok` means this exact content was reviewed.", "",
+            "`ok` means this exact content was reviewed; `baseline` means it was accepted without review when "
+            "discipline was adopted, and only later changes are reviewed.", "",
             "| Unit | " + " | ".join(lenses) + " |", "|---|" + "---|" * len(lenses)]
     for u in UNITS["units"]:
         cells = []
@@ -382,9 +408,12 @@ def evidence(since: str | None = None) -> str:
                 cells.append("–")
                 continue
             seen = ledger.get(u["id"], {}).get(l, [])
-            state = "ok" if hashes[u["id"]][l] in seen else ("stale" if seen else "never")
+            state = pair_state(u["id"], l, hashes[u["id"]][l], ledger, base)
             cells.append(f"{state} {_date(last.get((u['id'], l)))}" if seen else state)
         out.append(f"| {u['id']} | " + " | ".join(cells) + " |")
+    reasons = sorted({(_date(r.get("at")), r["baseline"]) for r in read_jsonl(LEDGER) if r.get("baseline")})
+    if reasons:
+        out += ["", "Baselines (accepted without review):", ""] + [f"- {d}: {why}" for d, why in reasons]
     latest = [h for h in latest_outcomes().values() if not since or _date(h.get("at")) >= since]
     counts: dict[str, dict[str, int]] = {}
     for h in latest:
@@ -654,7 +683,12 @@ def cmd_mark(a) -> None:
             sys.exit(f"bad pair {pair}")
         rows.append({"unit": uid, "lens": lens, "hash": hashes[uid][lens], "at": at})
     append_jsonl(LEDGER, rows)
-    # Remember the tree each fully current unit was reviewed at, so a later change is reviewed as a diff.
+    record_trees(hashes, at)
+    print(f"marked {len(a.pairs)} pairs, advanced {advanced} pairs touched only by reviewed fixes")
+
+
+def record_trees(hashes: dict, at: int) -> None:
+    """Remember the tree each fully current unit was reviewed at, so a later change is reviewed as a diff."""
     ledger = reviewed()
     tree = snapshot_tree()
     current = [u["id"] for u in UNITS["units"] if u["lenses"] and all(
@@ -662,14 +696,33 @@ def cmd_mark(a) -> None:
     known = latest_trees()
     append_jsonl(TREES, [{"unit": uid, "tree": tree, "at": at} for uid in current if known.get(uid) != tree])
     pin_trees(recorded_trees())
-    print(f"marked {len(a.pairs)} pairs, advanced {advanced} pairs touched only by reviewed fixes")
+
+
+def cmd_baseline(a) -> None:
+    if not a.reason.strip():
+        sys.exit("give the reason (--reason), e.g. \"adopted discipline on existing code; the user chose to review changes only\"")
+    known = {u["id"] for u in UNITS["units"]}
+    bad = [u for u in (a.unit or []) if u not in known]
+    if bad:
+        sys.exit(f"unknown units: {', '.join(bad)}")
+    STATE.mkdir(parents=True, exist_ok=True)
+    hashes = all_hashes(repo_files())
+    ledger = reviewed()
+    at = next_at(LEDGER)
+    rows = [{"unit": u["id"], "lens": l, "hash": hashes[u["id"]][l], "at": at, "baseline": a.reason.strip()}
+            for u in UNITS["units"] if not a.unit or u["id"] in a.unit
+            for l in u["lenses"] if hashes[u["id"]][l] not in ledger.get(u["id"], {}).get(l, [])]
+    append_jsonl(LEDGER, rows)
+    record_trees(hashes, at)
+    print(f"baselined {len(rows)} pairs: accepted as they are, not reviewed; from now on their changes are reviewed")
 
 
 def cmd_status(_a) -> None:
     hashes = all_hashes(repo_files())
     ledger = reviewed()
+    base = baselined()
     lenses = list(UNITS["lenses"])
-    total = ok = 0
+    total = ok = based = 0
     w = max([7, *(len(l) + 2 for l in lenses)])
     print(f"{'unit':26}" + "".join(f"{l:>{w}}" for l in lenses))
     for u in UNITS["units"]:
@@ -679,14 +732,15 @@ def cmd_status(_a) -> None:
                 row += f"{'-':>{w}}"
                 continue
             total += 1
-            seen = ledger.get(u["id"], {}).get(l, [])
-            state = "ok" if hashes[u["id"]][l] in seen else ("stale" if seen else "never")
+            state = pair_state(u["id"], l, hashes[u["id"]][l], ledger, base)
             ok += state == "ok"
+            based += state == "baseline"
             row += f"{state:>{w}}"
         print(f"{u['id']:26}{row}")
     latest = latest_outcomes()
     counts = {s: sum(h["status"] == s for h in latest.values()) for s in ("fixed", "rejected", "open", "question", "answered")}
-    print(f"\ncoverage {ok}/{total} pairs current; findings so far: {counts}")
+    print(f"\ncoverage {ok + based}/{total} pairs current" + (f" ({based} baseline: accepted when discipline was adopted, not reviewed)" if based else "")
+          + f"; findings so far: {counts}")
     if counts["question"]:
         print(f"{counts['question']} open questions for the user: `discipline review questions`")
     from . import handover  # noqa: PLC0415
@@ -709,6 +763,9 @@ def main(argv: list[str] | None = None) -> int:
     df.add_argument("--unit")
     df.add_argument("--since")
     sub.add_parser("record").add_argument("file")
+    bl = sub.add_parser("baseline")
+    bl.add_argument("--reason", required=True)
+    bl.add_argument("--unit", action="append")
     mk = sub.add_parser("mark")
     mk.add_argument("pairs", nargs="*")
     mk.add_argument("--no-advance", action="store_true", help="fixer changes were not delta-reviewed")
@@ -726,7 +783,7 @@ def main(argv: list[str] | None = None) -> int:
     tc = sub.add_parser("touched")
     tc.add_argument("--unit", action="append")
     a = p.parse_args(argv)
-    {"plan": cmd_plan, "show": cmd_show, "diff": cmd_diff, "record": cmd_record, "mark": cmd_mark,
+    {"plan": cmd_plan, "show": cmd_show, "diff": cmd_diff, "record": cmd_record, "mark": cmd_mark, "baseline": cmd_baseline,
      "status": cmd_status, "open": cmd_open, "quota": cmd_quota, "touched": cmd_touched,
      "questions": cmd_questions, "answer": cmd_answer, "checklist": cmd_checklist, "evidence": cmd_evidence}[a.cmd](a)
     return 0

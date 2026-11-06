@@ -7,7 +7,13 @@ Read .agents/README.md, then follow the continuation point in this branch's work
 ```
 
 `CLAUDE.md` already tells every session to read `.agents/README.md` first, so "continue where we left
-off" also works.
+off" also works. With the discipline plugin enabled, a new session is shown the continuation point
+anyway, with the step that was in progress if the last session stopped in the middle of one, and the
+files changed after the work file was last written.
+
+**After a crash:** if the work file shows a step "In progress", the last session stopped in the middle
+of it. Check the files it names (`git status`, `git diff`) for half-done edits, finish or undo them, run
+the gate, then update the work file before going on.
 
 Before stopping a session, check that:
 

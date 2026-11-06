@@ -5,6 +5,10 @@
     discipline decisions check           exit 1 if the index is out of date
     discipline decisions search <words>  decisions and answered review questions mentioning all the words
 
+Decisions recorded before discipline was adopted can stay where they are (e.g. an ADR folder): list
+their folders in `.agents/profile.json` as `"decisionsElsewhere": ["docs/adr"]`. The index links to
+them and `search` searches them too; new decisions go in docs/decisions/.
+
 One file per decision means branches never conflict over the log: each adds its own files. The index
 (newest first: date, title, area, superseded) is generated, so it is never edited by hand; after a
 merge, regenerate it. `discipline check` fails while it is out of date. Read decisions by search
@@ -14,6 +18,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +50,16 @@ skip superseded ones. A new decision: `discipline decisions new "<title>"`, then
 """
 
 
+def elsewhere(root: Path | None = None) -> list[str]:
+    """Folders of decisions recorded before discipline was adopted (`decisionsElsewhere` in the profile)."""
+    path = (root or review.ROOT) / ".agents" / "profile.json"
+    try:
+        value = json.loads(path.read_text()).get("decisionsElsewhere") or []
+    except (OSError, ValueError):
+        return []
+    return [v.strip("/") for v in value if isinstance(v, str) and v.strip("/")]
+
+
 @dataclass
 class Entry:
     file: str
@@ -68,21 +84,29 @@ def entries(directory: Path | None = None) -> list[Entry]:
     return sorted(out, key=lambda e: (e.date, e.file), reverse=True)
 
 
-def render(items: list[Entry]) -> str:
+def render(items: list[Entry], earlier: list[str] = ()) -> str:
     rows = [f"| {e.date} | [{e.title.replace('|', '/')}](decisions/{e.file}) | {e.area.replace('|', '/')} | "
             f"{'superseded' if e.superseded else ''} |" for e in items]
     table = "\n".join(["| Date | Decision | Area | |", "|---|---|---|---|", *rows]) if rows else "_No decisions yet._"
-    return HEADER + "\n" + table + "\n"
+    links = ", ".join(f"[{d}/]({os.path.relpath(d, 'docs')}/)" for d in earlier)
+    note = f"\nEarlier decisions, kept where they were recorded (`discipline decisions search` covers them): {links}\n" if earlier else ""
+    return HEADER + note + "\n" + table + "\n"
 
 
-def problems(directory: Path | None = None, index: Path | None = None) -> tuple[list[str], list[str]]:
+def problems(directory: Path | None = None, index: Path | None = None,
+             earlier: list[str] | None = None) -> tuple[list[str], list[str]]:
     """(problems, warnings) for the gate."""
     directory, index = directory or DIR, index or INDEX
-    if not directory.is_dir():
-        return [], []
-    items = entries(directory)
+    earlier = elsewhere(directory.parents[1]) if earlier is None else earlier
+    root = directory.parents[1]
     errs, warns = [], []
-    if not index.exists() or index.read_text(encoding="utf-8") != render(items):
+    gone = [d for d in earlier if not (root / d).is_dir()]
+    if gone:
+        warns.append(f"decisionsElsewhere names folders that don't exist: {', '.join(gone)}")
+    if not directory.is_dir():
+        return errs, warns
+    items = entries(directory)
+    if not index.exists() or index.read_text(encoding="utf-8") != render(items, earlier):
         errs.append("docs/DECISIONS.md is out of date (run `discipline decisions index`)")
     bad = [p.name for p in directory.glob("*.md") if p.name != "README.md" and not NAME.match(p.name)]
     if bad:
@@ -118,6 +142,13 @@ def search(words: list[str], directory: Path | None = None) -> list[str]:
         if all(w in text for w in words):
             hits.append(f"{e.date}  docs/decisions/{e.file}  {e.title}  [{e.area or 'no area'}]"
                         + ("  (superseded)" if e.superseded else ""))
+    root = (directory or DIR).parents[1]
+    for folder in elsewhere(root):
+        for path in sorted((root / folder).rglob("*.md")) if (root / folder).is_dir() else []:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if all(w in text.lower() for w in words):
+                title = next((l.lstrip("# ").strip() for l in text.splitlines() if l.startswith("#")), path.stem)
+                hits.append(f"earlier decision  {path.relative_to(root).as_posix()}  {title}")
     for h in review.latest_outcomes().values():
         if h["status"] != "answered":
             continue
@@ -145,11 +176,11 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "new":
         path = new(a.title)
         print(path.relative_to(review.ROOT))
-        INDEX.write_text(render(entries()))
+        INDEX.write_text(render(entries(), elsewhere()))
         return 0
     if a.cmd == "index":
         INDEX.parent.mkdir(parents=True, exist_ok=True)
-        INDEX.write_text(render(entries()))
+        INDEX.write_text(render(entries(), elsewhere()))
         print(f"indexed {len(entries())} decisions in docs/DECISIONS.md")
         return 0
     errs, warns = problems()

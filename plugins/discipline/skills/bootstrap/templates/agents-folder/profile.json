@@ -1,5 +1,5 @@
 {
-  "_comment": "The project profile: what kind of product this is. discipline lenses turns it into the review lenses (show / apply / check). Fill it from the bootstrap questions; allowed values are listed in discipline lenses. Re-run `discipline lenses apply` whenever it changes. 'specRules' is null, or switches on the gate check that every business rule in the spec is pinned by a test (see discipline spec-rules). 'ai' lists how the product uses models (rag, assistive, agentic; [] for none); with any mode, 'aiEvals' says where prompts and their eval sets live (see discipline ai-evals).",
+  "_comment": "The project profile: what kind of product this is. discipline lenses turns it into the review lenses (show / apply / check). Fill it from the bootstrap questions; allowed values are listed in discipline lenses. Re-run `discipline lenses apply` whenever it changes. 'specRules' is null, or switches on the gate check that every business rule in the spec is pinned by a test (see discipline spec-rules). 'ai' lists how the product uses models (rag, assistive, agentic; [] for none); with any mode, 'aiEvals' says where prompts and their eval sets live (see discipline ai-evals). 'decisionsElsewhere' lists folders of decisions recorded before discipline was adopted (e.g. [\"docs/adr\"]), which stay where they are and are searched too.",
   "product": "<PROJECT>: one line on what it is and who it is for",
   "kinds": [],
   "languages": ["en"],
@@ -9,6 +9,7 @@
   "specRules": null,
   "ai": [],
   "aiEvals": null,
+  "decisionsElsewhere": [],
   "overrides": {
     "add": {},
     "remove": {}

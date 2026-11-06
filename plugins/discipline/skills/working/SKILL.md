@@ -46,7 +46,9 @@ Commands are the `discipline` CLI from the plugin; `discipline help` lists them.
    asking, within the limits recorded there; otherwise propose the run and wait for the go-ahead.
 7. **Write it down as you go.** Record each user decision, design answer and backlog item the moment it
    is made, not at the end: product decisions as files in `docs/decisions/` (`discipline decisions
-   new "<title>"`); this branch's continuation point in its work file (`discipline work`); the shared
+   new "<title>"`); this branch's continuation point in its work file (`discipline work`), and, before
+   a step that edits files, that step and its files under "In progress" (back to "nothing" when it is
+   done); the shared
    roadmap and shared open questions in `.agents/STATUS.md`; build conventions in
    the proposal's "Built" list. A decision that exists only in chat is lost on a crash or a context
    reset.
@@ -228,8 +230,8 @@ stand. So:
 ## Reporting
 
 - Short: what changed, test results with numbers, decisions the user still has to make, next steps.
-- "Status and ETA?": one status line plus a step-by-step table with realistic estimates, updated as
-  you go.
+- Asked for status and an estimate: one status line plus a step-by-step table with realistic
+  estimates, updated as you go (unless the team's preferences in `.agents/USER.md` say otherwise).
 - State failures and skipped steps plainly. When something is done and verified, say so without hedging.
 - When you correct yourself (a wrong number, a wrong claim), say so explicitly.
 - Name files as clickable `path:line` references.

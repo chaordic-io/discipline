@@ -107,6 +107,11 @@ def run(root: Path | None = None) -> Result:
     if left:
         res.section("work files", warnings=[f"on the default branch, work files of merged branches remain: {', '.join(left)} "
                                             "(fold them into STATUS.md and HISTORY.md, then delete them)"])
+    branch = work.current_branch()
+    newer = work.changed_since(work.file_for(branch)) if branch else []
+    if newer:
+        res.section("work files", warnings=[f"{len(newer)} files changed after this branch's work file was last updated "
+                                            f"({', '.join(newer[:5])}{' …' if len(newer) > 5 else ''}): update its continuation point"])
     res.section("handover", warnings=[f"{line} (trim it: /discipline:working, \"Keeping the handover files small\")"
                                       for line in handover.over_budget_lines(root, units)])
     return res

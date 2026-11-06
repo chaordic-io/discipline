@@ -16,7 +16,14 @@
   user (in one batch), write the answer into the spec and `docs/decisions/`, then close it with
   `discipline review answer N --reason "<the answer; where it is recorded>"`. Reviewers see answered questions,
   so they are not asked again.
-- **Progress:** `discipline review status`, a units × lenses matrix of ok, stale and never.
+- **Progress:** `discipline review status`, a units × lenses matrix of ok, baseline, stale and never.
+- **Existing code:** `discipline review baseline --reason "<why>" [--unit ID ...]` accepts the current
+  content of every pair that isn't current yet, without reviewing it. From then on a change to a unit is
+  reviewed as a diff against that baseline: the changed code with its context, not the whole unit.
+  Status and evidence show such pairs as `baseline`, never as `ok`, with the reason, so nobody
+  mistakes them for reviewed code. To sweep the old code later, review the riskiest units on purpose,
+  one run at a time (`{ "units": ["auth"] }`): `plan` picks a unit up once it changes, and a full
+  review of a baselined unit is a run with that unit named.
 - **Evidence:** `discipline review evidence [--since <date>]`: coverage with dates, and every finding
   with its scenario, fix, verifier's reasoning and the snapshot it was reviewed at, as Markdown for a
   pull request or an audit.

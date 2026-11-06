@@ -121,7 +121,8 @@ In the repository, run:
 /discipline:bootstrap
 ```
 
-The agent copies the templates, then asks three batches of questions, each with a recommended answer:
+The agent first surveys the repository, then copies the templates and asks three batches of
+questions, each with a recommended answer:
 the **product** (its purpose, success measures and non-goals, which open the spec, and what kind of
 product it is, which decides the reviewers), the **stack** (which decides the gate and tools) and
 **how you work** (who commits, whether agents may run the review loop on their own and within which
@@ -129,13 +130,30 @@ usage limits, your standing preferences). It fills in the files, wires the gate,
 the decisions, and with your go-ahead runs a first review. Setting up also enables the plugin in the
 repository's `.claude/settings.json`, so everyone who opens it works the same way.
 
+**On an existing project** nothing your team wrote is overwritten, merged or moved without your answer.
+Before copying anything, the survey lists what is already there (agent instructions such as
+`CLAUDE.md` or `AGENTS.md`, specs and requirements, an ADR folder, roadmap notes, your gate and CI,
+uncommitted changes, the size of the code), and a batch of questions settles each: keep your text and
+add the method's rules beside it, link your specs from `docs/SPEC.md`, leave your decision records
+where they are (still searched), add `discipline check` to the gate you have. Nothing is backfilled:
+the spec and the decisions start today and grow as areas are worked on. The existing code can be
+**baselined**: accepted as it is, so the loop reviews only what changes from now on, and shown as
+`baseline`, never as reviewed. Or review the riskiest units first, or all of it. Gate checks the old
+code fails (coverage, duplication, strict lint) are ratcheted, so they can't get worse, rather than
+fixed as part of setup.
+
 ```mermaid
 sequenceDiagram
     actor U as You
     participant A as Claude Code
     participant D as discipline
     U->>A: /discipline:bootstrap
-    A->>D: discipline init (copy templates, enable plugin)
+    A->>D: discipline init --survey (what exists already)
+    opt existing project
+        A->>U: Batch 0: what to do with each existing file, the old code, the gate
+        U-->>A: answers
+    end
+    A->>D: discipline init (copy templates, never overwrite, enable plugin)
     A->>U: Batch 1: the product (kinds, languages, interfaces, AI, …)
     U-->>A: answers
     A->>D: discipline lenses apply (profile → reviewers)
@@ -384,8 +402,21 @@ recommendations.
 A new or restarted session recovers its context from files in the repository, not from memory. What
 every session reads is kept small on purpose.
 
+**Resuming after a crash.** Each branch's work file holds its continuation point (the next step) and an
+"In progress" line, which is written before a step that edits files and cleared when that step is
+done. The plugin's hooks keep this from depending on memory alone:
+
+- **Session start:** every new, resumed or compacted session is shown the continuation point, the
+  step left in progress if the last session stopped in the middle of one, and the files changed after
+  the work file was last written. So a crashed session resumes with "continue", without anyone
+  knowing the prompt, and it checks a half-done step's files before going on.
+- **Stop:** when code changed after the work file was last updated, the agent is asked, once, to
+  bring it up to date before it stops (`DISCIPLINE_STOP_CHECK=0` turns this off).
+- **The gate and `discipline work`** warn about a work file older than the branch's changes.
+
 ```mermaid
 flowchart LR
+    H(["session-start hook:<br/>continuation point,<br/>step in progress"]) -.-> S
     S([New session]) --> CM["CLAUDE.md<br/>always loaded<br/>(≤ 200 lines)"]
     CM --> RD[".agents/README.md"]
     RD --> ST["STATUS.md<br/>shared: roadmap, branches,<br/>open questions (≤ 150 lines)"]
@@ -400,7 +431,7 @@ flowchart LR
 | File | Rule |
 |---|---|
 | `.agents/STATUS.md` | What everyone shares: the roadmap and the shared open questions. A snapshot, rewritten in place. |
-| `.agents/work/<branch>.md` | One per branch (`discipline work`): who works on it, what it owns, its continuation point and state. `discipline work --list` shows every branch in flight. Deleted when the branch merges. |
+| `.agents/work/<branch>.md` | One per branch (`discipline work`): who works on it, what it owns, its continuation point, the step in progress, and its state. `discipline work --list` shows every branch in flight. Deleted when the branch merges. |
 | `.agents/USER.md`, `USER.local.md` | The team's roles and shared preferences; each person's own, not committed. |
 | `.agents/HISTORY.md` | A few lines per entry, added at the end; older entries move to `docs/history.md`. |
 | `docs/decisions/` | One file per decision (`discipline decisions new`), each with `Area` and `Spec`, read by search; `docs/DECISIONS.md` is the generated index. |
@@ -463,10 +494,11 @@ its eval set and facets (if the product calls models). Over-budget handover file
 
 | Command | What it does |
 |---|---|
-| `discipline init [DIR]` | Copy the templates into a repository (never overwrites) and enable the plugin. |
+| `discipline init [DIR] [--survey]` | Copy the templates into a repository (never overwrites) and enable the plugin; `--survey` copies nothing and lists what already exists. |
 | `discipline check` | The gate checks. |
 | `discipline review plan · show · checklist · diff · touched · record · mark` | The review loop's bookkeeping (the workflow calls these). |
 | `discipline review status · open · questions · answer` | Coverage per unit and lens; open findings; questions for you. |
+| `discipline review baseline --reason R` | Accept existing code without reviewing it; from then on only changes are reviewed. |
 | `discipline review evidence [--since DATE]` | The review's evidence as Markdown: coverage with dates, and every finding with its scenario, fix and verifier's reasoning. |
 | `discipline lenses show · apply · check` | The lenses the profile selects, and why. |
 | `discipline spec-rules` · `ai-evals` · `handover` | The individual checks, with details. |
@@ -487,7 +519,7 @@ plugins/discipline/
   skills/                           bootstrap (with templates/), upgrade, working, engineering, stack
   workflows/review-loop.js          the review loop
   agents/                           reviewer checklists and review-reader
-  hooks/                            the read-only guard
+  hooks/                            the read-only guard; resume on session start, work-file check on stop
   bin/discipline, src/discipline/   the command line tool (pyproject.toml)
   tests/                            the plugin's tests
 CHANGELOG.md                        releases and migration notes

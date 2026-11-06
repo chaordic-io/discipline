@@ -334,3 +334,162 @@ class InitTeamTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AdoptionTest(unittest.TestCase):
+    """Adopting discipline on an existing project: nothing is overwritten, what exists is found, old code
+    can be baselined instead of reviewed, and old decision records stay where they are."""
+
+    def setUp(self):
+        self.repo = Repo()
+
+    def tearDown(self):
+        self.repo.close()
+
+    def test_baseline_accepts_old_code_without_calling_it_reviewed(self):
+        self.assertEqual(set(self.repo.status_row()), {"never"})
+        self.assertNotEqual(self.repo.run("review", "baseline", "--reason", " ").returncode, 0, "a reason is required")
+        r = self.repo.run("review", "baseline", "--reason", "adopted on existing code; changes only")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(set(self.repo.status_row()), {"baseline"})
+        plan = json.loads(self.repo.run("review", "plan").stdout)
+        self.assertEqual(plan["selected"], [], "a baseline is current: nothing to review")
+        report = self.repo.run("review", "evidence").stdout
+        self.assertIn("baseline", report)
+        self.assertIn("adopted on existing code; changes only", report)
+        self.assertNotIn("| core | ok", report)
+
+        self.repo.write("src/a.py", "a = 2\n")
+        plan = json.loads(self.repo.run("review", "plan").stdout)
+        [entry] = plan["selected"]
+        self.assertIn("since", entry, "a change after the baseline is reviewed as a diff")
+        self.assertEqual(entry["changed"], ["src/a.py"])
+
+    def test_a_named_unit_is_reviewed_in_full_over_its_baseline(self):
+        self.repo.run("review", "baseline", "--reason", "adopted")
+        [entry] = json.loads(self.repo.run("review", "plan", "--unit", "core").stdout)["selected"]
+        self.assertNotIn("since", entry)
+        self.assertIn("baseline", entry["reason"])
+        pairs = [f"core:{l}" for l in entry["lenses"]]
+        self.assertEqual(self.repo.run("review", "mark", *pairs).returncode, 0)
+        self.assertEqual(set(self.repo.status_row()), {"ok"})
+
+    def test_decisions_kept_elsewhere_are_indexed_and_searched(self):
+        self.repo.write("docs/adr/0001-use-postgres.md", "# Use Postgres\n\nWe chose Postgres for invoicing.\n")
+        profile = json.loads((self.repo.root / ".agents/profile.json").read_text())
+        profile["decisionsElsewhere"] = ["docs/adr"]
+        self.repo.write(".agents/profile.json", json.dumps(profile))
+        self.assertEqual(self.repo.run("decisions", "check").returncode, 1, "the index must mention the old folder")
+        self.assertEqual(self.repo.run("decisions", "index").returncode, 0)
+        index = (self.repo.root / "docs/DECISIONS.md").read_text()
+        self.assertIn("[docs/adr/](adr/)", index)
+        self.assertEqual(self.repo.run("decisions", "check").returncode, 0)
+        hits = self.repo.run("decisions", "search", "postgres").stdout
+        self.assertIn("docs/adr/0001-use-postgres.md", hits)
+        profile["decisionsElsewhere"] = "docs/adr"
+        self.repo.write(".agents/profile.json", json.dumps(profile))
+        self.assertIn("decisionsElsewhere", self.repo.run("check").stdout)
+
+    def test_survey_finds_what_exists_and_init_overwrites_none_of_it(self):
+        root = Path(tempfile.mkdtemp())
+        try:
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            files = {"CLAUDE.md": "our rules\n", "AGENTS.md": "agents\n", "docs/adr/0001-x.md": "# X\n",
+                     "docs/decisions/0002-y.md": "# Y\n", "docs/product-requirements.md": "# PRD\n",
+                     "Makefile": "check:\n", ".gitignore": "node_modules/\n", "docs/SPEC.md": "# Our spec\n"}
+            for rel, text in files.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text)
+            found = {(k, p) for k, p, _ in init.survey(root)["found"]}
+            for item in [("instructions", "CLAUDE.md"), ("instructions", "AGENTS.md"), ("decisions", "docs/adr"),
+                         ("decisions", "docs/decisions"), ("spec", "docs/product-requirements.md"),
+                         ("spec", "docs/SPEC.md"), ("gate", "Makefile")]:
+                self.assertIn(item, found)
+            self.assertTrue(init.survey(root)["dirty"])
+            out = subprocess.run([DISCIPLINE, "init", "--survey"], cwd=root, capture_output=True, text=True).stdout
+            self.assertIn("Uncommitted changes", out)
+            self.assertFalse((root / ".agents").exists(), "--survey copies nothing")
+            init.install(root)
+            for rel, text in files.items():
+                if rel == ".gitignore":
+                    self.assertTrue((root / rel).read_text().startswith(text))
+                else:
+                    self.assertEqual((root / rel).read_text(), text, rel)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
+HOOK = str(PLUGIN / "hooks" / "session_hooks.py")
+
+
+class ResumeTest(unittest.TestCase):
+    """The session hooks: a new session is shown where to resume; a stop asks for a stale work file."""
+
+    def setUp(self):
+        self.repo = Repo()
+        self.assertEqual(self.repo.run("work").returncode, 0)
+        self.work = self.repo.root / ".agents/work/main.md"
+        text = self.work.read_text().replace("## Continuation point (start here)\n",
+                                             "## Continuation point (start here)\n\nAdd VAT to invoice totals (spec 3.2).\n")
+        self.work.write_text(text)
+        self.repo.commit("work file")
+
+    def tearDown(self):
+        self.repo.close()
+
+    def hook(self, event: dict, **env) -> dict | None:
+        e = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_PROJECT_DIR", "DISCIPLINE_STOP_CHECK")}
+        r = subprocess.run([HOOK], input=json.dumps({"cwd": str(self.repo.root), **event}), capture_output=True,
+                           text=True, env={**e, **env})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout) if r.stdout.strip() else None
+
+    def age_work_file(self) -> None:
+        old = self.work.stat().st_mtime - 3600
+        os.utime(self.work, (old, old))
+
+    def test_session_start_shows_the_continuation_point_and_an_unfinished_step(self):
+        out = self.hook({"hook_event_name": "SessionStart", "source": "startup"})
+        context = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Add VAT to invoice totals (spec 3.2).", context)
+        self.assertNotIn("In progress when", context)
+
+        self.work.write_text(self.work.read_text().replace("- nothing", "- Rounding VAT in src/a.py and its tests"))
+        self.age_work_file()
+        self.repo.write("src/a.py", "a = 2\n")
+        context = self.hook({"hook_event_name": "SessionStart", "source": "resume"})["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("stopped in the middle of this step): - Rounding VAT in src/a.py", context)
+        self.assertIn("changed after the work file was last updated (src/a.py)", context)
+
+    def test_stop_asks_once_for_a_stale_work_file(self):
+        self.assertIsNone(self.hook({"hook_event_name": "Stop"}), "nothing changed: no reason to stop the stop")
+        self.age_work_file()
+        self.repo.write("src/a.py", "a = 2\n")
+        out = self.hook({"hook_event_name": "Stop"})
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("src/a.py", out["reason"])
+        self.assertIsNone(self.hook({"hook_event_name": "Stop", "stop_hook_active": True}), "the second stop goes through")
+        self.assertIsNone(self.hook({"hook_event_name": "Stop"}, DISCIPLINE_STOP_CHECK="0"))
+        self.assertIn("files changed after this branch's work file", self.repo.run("check").stdout)
+        self.assertIn("warning: 1 files changed", self.repo.run("work").stdout)
+        self.work.write_text(self.work.read_text() + "\n")  # the agent updates it
+        self.assertIsNone(self.hook({"hook_event_name": "Stop"}))
+
+    def test_review_state_and_the_work_files_do_not_count_as_changes(self):
+        self.age_work_file()
+        self.repo.write(".claude/review/ledger.jsonl", "{}\n")
+        self.repo.write(".agents/work/other.md", "x\n")
+        self.assertIsNone(self.hook({"hook_event_name": "Stop"}))
+
+    def test_outside_a_set_up_repository_and_on_bad_input_the_hooks_do_nothing(self):
+        plain = Path(tempfile.mkdtemp())
+        try:
+            subprocess.run(["git", "init", "-q", str(plain)], check=True)
+            (plain / "x.txt").write_text("x")
+            for event in ({"hook_event_name": "SessionStart"}, {"hook_event_name": "Stop"}):
+                r = subprocess.run([HOOK], input=json.dumps({"cwd": str(plain), **event}), capture_output=True, text=True)
+                self.assertEqual((r.returncode, r.stdout), (0, ""))
+            r = subprocess.run([HOOK], input="not json", capture_output=True, text=True)
+            self.assertEqual((r.returncode, r.stdout), (0, ""))
+        finally:
+            shutil.rmtree(plain, ignore_errors=True)

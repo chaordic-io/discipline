@@ -35,6 +35,8 @@ The documents these files point to instead of repeating:
 - `docs/proposals/`: designs, including phases not yet built.
 - `discipline review status`: review coverage per unit and lens.
 
-Keep these files current: the work file's continuation point after every step, `STATUS.md` when
+Keep these files current: the work file's continuation point after every step, and its "In progress"
+section before and after each step that edits files (so a crash in the middle of a step leaves a
+trace), `STATUS.md` when
 something shared changes (a roadmap item, a shared question). Keep them small, too: see "Keeping the handover files small" in
 /discipline:working.

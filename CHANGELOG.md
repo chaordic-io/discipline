@@ -22,6 +22,22 @@ a minor release adds without breaking, a major one needs migration steps.
   are back, and the review context's architecture section now has two fields to fill in: layers, and
   invariants. A test keeps checklist numbering free of gaps.
 - **Gate:** `discipline check` warns about a lens that is on but used by no unit.
+- **Adopting discipline on an existing project:** bootstrap surveys first (`discipline init
+  --survey`: agent instructions, specs, decision records, roadmap notes, the gate and CI, uncommitted
+  changes, the size of the code) and asks a batch of adoption questions before copying anything, so
+  nothing the team wrote is merged or moved without their answer. `discipline review baseline`
+  accepts existing code without reviewing it (shown as `baseline`, never `ok`; naming a unit in a run
+  reviews it in full). `decisionsElsewhere` in the profile keeps an existing decision folder where it
+  is, linked from the index and searched. Gate checks the existing code fails are ratcheted, fixed as
+  planned work or left out, each by the user's choice; never fixed as part of setup.
+- **Resuming after a crash:** the work file has an "In progress" section, written before a step that
+  edits files and cleared when it is done. A `SessionStart` hook shows every new session the
+  continuation point, an unfinished step and the changes newer than the work file; a `Stop` hook asks
+  the agent once to update the work file when code changed after it (`DISCIPLINE_STOP_CHECK=0` turns
+  it off); `discipline work` and `discipline check` warn about a stale work file.
+- **Team preferences start empty:** the `.agents/USER.md` template no longer suggests the plugin
+  author's own preferences; it lists the kinds worth asking about, and bootstrap records only what
+  the team says.
 
 ### Migration (from 0.1.0)
 
@@ -32,7 +48,9 @@ a minor release adds without breaking, a major one needs migration steps.
    purpose, and the shared machinery to use instead of re-building (see the template).
 3. If your review context's `## architecture` section still holds the template's placeholder text,
    which includes the lost checklist items, replace it with your layers and invariants.
-4. Pin `v0.2.0` in the gate and set `"discipline": "0.2.0"` in `.agents/profile.json`.
+4. Add the "In progress" section to each work file (see the template in `discipline work`'s source
+   or a newly created work file), and the "In progress" sentence to `CLAUDE.md`'s opening paragraph.
+5. Pin `v0.2.0` in the gate and set `"discipline": "0.2.0"` in `.agents/profile.json`.
 
 ## 0.1.0 (2026-11-05)
 
@@ -78,7 +96,7 @@ First release as a Claude Code plugin (`discipline@chaordic`), replacing the cop
 
 ### Migration (from the copy-in kit)
 
-1. Run `/discipline:bootstrap`'s step 2 (`discipline init`): it adds the new files
+1. Run `discipline init` (the copy step of `/discipline:bootstrap`): it adds the new files
    (`.agents/review-context.md`, `.claude/review/project.json`, `.claude/settings.json` entries) and
    keeps everything that exists.
 2. Move `scripts/review/units.json` to `.claude/review/units.json` and turn its `lenses` map into a

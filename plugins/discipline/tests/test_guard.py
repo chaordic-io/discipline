@@ -39,7 +39,7 @@ class GuardTest(unittest.TestCase):
             "npm install left-pad", "pnpm add x", "pip install x", "uv sync", "go mod tidy", "cargo update",
             "eslint --fix src", "prettier --write .", "gofmt -w .", "ruff format", "black src",
             "vitest -u", "jest --updateSnapshot", "go test ./... -update",
-            "discipline review mark a:tests", "discipline review record x.json", "discipline lenses apply",
+            "discipline review mark a:tests", "discipline review baseline --reason x", "discipline review record x.json", "discipline lenses apply",
             "discipline decisions new 'x'", "discipline decisions index", "discipline work",
             "cd src && rm x", "find . -name '*.tmp' | xargs rm",
         ]:

@@ -3,7 +3,10 @@
 **Starting a new session?** Read `.agents/README.md` first. It covers the shared status, your branch's
 work file (`discipline work`: its continuation point), the team's preferences, how we work and
 environment quirks. Keep the work file's continuation point current after every step, and
-`.agents/STATUS.md` current when something shared changes.
+`.agents/STATUS.md` current when something shared changes. Before starting a step that edits files,
+write it and the files it touches under "In progress" in the work file; set it back to "nothing" when
+the step is done. (The discipline plugin shows a new session the continuation point and any
+unfinished step, and asks for the work file to be updated when code changed after it.)
 
 <!-- ADAPT: one paragraph on what the product is and who it is for. -->
 Why it exists (the problem, the users, what success looks like, the non-goals) is section 0 of

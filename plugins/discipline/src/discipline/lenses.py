@@ -129,6 +129,9 @@ def validate(profile: dict) -> None:
             if not isinstance(reason, str) or not reason.strip():
                 problems.append(f"overrides.{side}.{lens}: give the reason")
     problems.extend(spec_rules.validate_config(profile.get("specRules")))
+    earlier = profile.get("decisionsElsewhere", [])
+    if not isinstance(earlier, list) or not all(isinstance(d, str) and d.strip("/") for d in earlier):
+        problems.append("decisionsElsewhere must be a list of folders (repository-relative)")
     ai = profile.get("ai", [])
     if not isinstance(ai, list) or not all(isinstance(m, str) for m in ai):
         problems.append("ai must be a list of modes ([] for none)")

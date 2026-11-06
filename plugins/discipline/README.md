@@ -26,7 +26,7 @@ up.
 | `skills/stack/` | `/discipline:stack`: choosing a stack, criteria S1–S7, with examples. |
 | `workflows/review-loop.js` | `/discipline:review-loop`: the incremental review → verify → fix loop. |
 | `agents/` | The eleven reviewer checklists (`discipline:security-auditor`, …) and `discipline:review-reader`, the read-only agent the loop runs them in. |
-| `hooks/` | A `PreToolUse` hook that blocks writes by `discipline:review-reader`. |
+| `hooks/` | A `PreToolUse` hook that blocks writes by `discipline:review-reader`; `SessionStart` and `Stop` hooks that show a new session where to resume and ask for the work file to be updated before stopping (`DISCIPLINE_STOP_CHECK=0` turns the stop check off). |
 | `bin/discipline`, `src/discipline/` | The `discipline` command (below). |
 | `tests/` | The plugin's tests. |
 
