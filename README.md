@@ -314,6 +314,7 @@ flowchart TD
     PF --> LQ{"a user interface<br/>and 2+ languages?"}
     LQ -- yes --> LOC[localisation]
     PF --> OV["overrides: add or remove<br/>a lens, with the reason"]
+    PF --> CU["customLenses: the project's<br/>own lenses and checklists"]
 ```
 
 | Lens | Looks for |
@@ -332,6 +333,28 @@ flowchart TD
 
 The checklists are generic. Each starts by reading its section of `.agents/review-context.md`, which holds
 the project's specifics (layering, expected sizes, contracts, languages, test commands).
+
+**Turning a lens off.** Name it in the profile's `overrides.remove`, with the reason, and run
+`discipline lenses apply`. Any lens can be turned off this way, the always-on ones included:
+
+```json
+"overrides": { "add": {}, "remove": { "duplication": "generated SDK; repetition is deliberate" } }
+```
+
+**A lens of your own.** For a concern none of the lenses covers (a regulation, accessibility, a house
+standard), add one:
+
+```sh
+discipline lenses new gdpr --why "we process EU personal data" --second-opinion
+```
+
+This writes a checklist to fill in at `.claude/agents/gdpr-reviewer.md` (written like the plugin's, so
+it also works by hand as an agent), declares the lens in the profile's `customLenses`, and adds its section
+to `.agents/review-context.md`. Then `discipline lenses apply` and add it to the units where it applies.
+From there it runs like any other lens: its own status column, verifiers, fixes and evidence.
+`--second-opinion` gives its refuted critical/high findings a second verifier, as security and supply
+chain have. Editing a checklist doesn't re-queue earlier reviews; when its rules really change,
+`discipline review requeue --lens gdpr --reason "..."` makes the lens due again on every unit, in full.
 
 ## Engineering principles and stack criteria
 
@@ -468,10 +491,12 @@ its eval set and facets (if the product calls models). Over-budget handover file
 | `discipline init [DIR] [--survey]` | Copy the templates into a repository (never overwrites) and enable the plugin; `--survey` copies nothing and lists what already exists. |
 | `discipline check` | The gate checks. |
 | `discipline review plan · show · checklist · diff · touched · record · mark` | The review loop's bookkeeping (the workflow calls these). |
+| `discipline review requeue --lens L --reason R` | Make reviewed (unit, lens) pairs due again in full, e.g. after a checklist changed. |
 | `discipline review status · open · questions · answer` | Coverage per unit and lens; open findings; questions for you. |
 | `discipline review baseline --reason R` | Accept existing code without reviewing it; from then on only changes are reviewed. |
 | `discipline review evidence [--since DATE]` | The review's evidence as Markdown: coverage with dates, and every finding with its scenario, fix and verifier's reasoning. |
 | `discipline lenses show · apply · check` | The lenses the profile selects, and why. |
+| `discipline lenses new NAME --why R` | Add a lens of the project's own: its checklist, profile entry and review-context section. |
 | `discipline spec-rules` · `ai-evals` · `handover` | The individual checks, with details. |
 | `discipline doc engineering · working · stack · bootstrap · upgrade` | The guides, as text. |
 | `discipline work [--list]` | This branch's work file, created if missing; or every branch in flight, from git. |
@@ -511,8 +536,9 @@ with its migration notes, and tag the commit `v<version>` (the pinned `uvx` line
 
 Changing the method: a lesson that applies beyond one project goes into `/discipline:working`; a new
 engineering principle or stack criterion gets the next number (never renumber: decisions cite them); a
-new lens needs a checklist in `agents/`, an entry in `CATALOGUE` and a rule in `decide`
-(`src/discipline/lenses.py`), tests, and a row in the tables above.
+new built-in lens needs a checklist in `agents/`, an entry in `CATALOGUE` and a rule in `decide`
+(`src/discipline/lenses.py`), tests, and a row in the tables above. A lens only one project needs is
+that project's own (`discipline lenses new`), not a built-in one.
 
 ## License
 

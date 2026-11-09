@@ -204,9 +204,17 @@ class TextTest(unittest.TestCase):
         for lens in lenses.CATALOGUE:
             self.assertIn(f"\n## {lens}\n", context, lens)
 
+    def test_the_custom_lens_template_is_written_like_the_built_in_checklists(self) -> None:
+        text = (PLUGIN / "skills" / "bootstrap" / "reference" / "lens-checklist.md").read_text()
+        self.assertIn("`{name}` section of `.agents/review-context.md`", text)
+        self.assertIn("READ-ONLY", text)
+        self.assertIn("tools: Read, Grep, Glob, Bash\n", text)
+        self.assertEqual([int(n) for n in re.findall(r"^(\d+)\.", text, re.M)], [1, 2])
+
     def test_workflow_takes_its_lenses_from_the_plan_and_runs_reviewers_read_only(self) -> None:
         workflow = (PLUGIN / "workflows" / "review-loop.js").read_text()
         self.assertIn("const LENSES = Array.isArray(plan.lenses)", workflow)
+        self.assertIn("SECOND_OPINION = plan.secondOpinion", workflow)
         self.assertIn("const READER = 'discipline:review-reader'", workflow)
         self.assertIn("const RP = 'discipline review'", workflow)
         self.assertTrue((PLUGIN / "agents" / "review-reader.md").exists())

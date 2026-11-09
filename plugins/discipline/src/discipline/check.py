@@ -6,7 +6,8 @@ don't. Each check reads only the project's own files:
 - review units (`.claude/review/units.json`): every file under `roots` belongs to exactly one unit, unit
   IDs are unique, every lens a unit uses is configured, `context` names only lenses the unit uses;
 - the profile (`.agents/profile.json`): once filled in, the units' lenses are exactly the ones it
-  selects; a profile set up with an older discipline version is a warning (run /discipline:upgrade);
+  selects, and each custom lens's checklist exists (one without a review-context section is a warning);
+  a profile set up with an older discipline version is a warning (run /discipline:upgrade);
 - spec rules (`specRules` in the profile): every rule in the spec is named by a test;
 - AI evals (`ai`/`aiEvals` in the profile): every prompt has its eval set and facets;
 - the decision log: docs/DECISIONS.md is the current index of docs/decisions/ (and each decision has
@@ -87,7 +88,14 @@ def run(root: Path | None = None) -> Result:
             problems = lenses.check(profile, units)
             used = {l for u in units.get("units", []) for l in u["lenses"]}
             unused = [] if problems or not units.get("units") else [l for l in lenses.selected(profile) if l not in used]
-            res.section("profile", problems, [f"lenses on but used by no unit (add them where they apply): {', '.join(unused)}"] if unused else [])
+            warns = [f"lenses on but used by no unit (add them where they apply): {', '.join(unused)}"] if unused else []
+            context = root / ".agents" / "review-context.md"
+            text = context.read_text(encoding="utf-8") if context.exists() else ""
+            own = [l for l in lenses.custom(profile) if l in lenses.selected(profile)]
+            missing = [l for l in own if f"\n## {l}\n" not in text]
+            if missing and context.exists():
+                warns.append(f"custom lenses without a section in .agents/review-context.md: {', '.join(missing)}")
+            res.section("profile", problems, warns)
         except lenses.ProfileError as e:
             res.section("profile", [f"invalid: {e}"])
             return res

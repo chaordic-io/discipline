@@ -4,6 +4,27 @@ Each release lists what changed and, under **Migration**, what a repository set 
 version has to do (`/discipline:upgrade` walks through it). Versions follow semantic versioning:
 a minor release adds without breaking, a major one needs migration steps.
 
+## Unreleased
+
+- **Lenses of the project's own.** The profile's new `customLenses` field declares lenses next to the
+  built-in ones, {name: {checklist, why, secondOpinion?}}, each with a checklist kept in the repository.
+  `discipline lenses new NAME --why R [--checklist PATH] [--second-opinion]` creates one: a checklist
+  from the template (by default `.claude/agents/<name>-reviewer.md`, so it also works by hand as a
+  project agent), the profile entry and a review-context section. A custom lens runs like a built-in
+  one; it is on while declared, and `overrides.remove` turns it off. `discipline review checklist`
+  prints a custom lens's checklist; `discipline check` fails when one is missing and warns when a
+  custom lens has no review-context section. `secondOpinion` gives its refuted critical/high findings
+  a second verifier: the review plan now lists those lenses, and the workflow takes them from it.
+- **`discipline review requeue --lens L --reason R [--unit ID ...]`** makes reviewed (unit, lens) pairs
+  due again, in full, although their code didn't change, e.g. after a checklist's rules changed. The
+  earlier reviews stay in the history; the pairs show as `stale` until reviewed.
+- The read-only guard also blocks `discipline review requeue` and `discipline lenses new` for reviewers.
+
+### Migration (from 0.2.0)
+
+None required. Optionally add `"customLenses": {}` to `.agents/profile.json`, so the field is there to
+fill in.
+
 ## 0.2.0 (2026-11-05)
 
 - **New lens, simplicity (always on).** Its rule: don't express a rule, a case or anything else in a

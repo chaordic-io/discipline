@@ -138,6 +138,54 @@ class CheckTest(unittest.TestCase):
         self.assertEqual((out["rc"], out["problems"]), (0, []))
         self.assertIn(".agents/STATUS.md: 151 lines (budget 150)", out["warnings"][0])
 
+    def test_a_custom_lens_end_to_end(self):
+        self.configured()
+        self.repo.write(".agents/review-context.md", "# Review context\n\n## tests\n\n- pytest\n")
+        units = json.loads((self.repo.root / ".claude/review/units.json").read_text())
+        units["roots"].append(".claude/agents/")  # so the checklist would fall under a root
+        self.repo.write(".claude/review/units.json", json.dumps(units))
+        refused = self.repo.run("lenses", "new", "security", "--why", "x")
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("built-in lens", refused.stderr)
+
+        made = self.repo.run("lenses", "new", "gdpr", "--why", "we process EU personal data", "--second-opinion")
+        self.assertEqual(made.returncode, 0, made.stderr)
+        checklist = (self.repo.root / ".claude/agents/gdpr-reviewer.md").read_text()
+        self.assertIn("name: gdpr-reviewer", checklist)
+        self.assertIn("we process EU personal data", checklist)
+        profile = json.loads((self.repo.root / ".agents/profile.json").read_text())
+        self.assertEqual(profile["customLenses"]["gdpr"], {"checklist": ".claude/agents/gdpr-reviewer.md",
+                                                           "why": "we process EU personal data", "secondOpinion": True})
+        self.assertIn("\n## gdpr\n", (self.repo.root / ".agents/review-context.md").read_text())
+        units = json.loads((self.repo.root / ".claude/review/units.json").read_text())
+        self.assertIn(".claude/agents/gdpr-reviewer.md", units["globalExclude"])
+        self.assertEqual(self.repo.run("lenses", "new", "gdpr", "--why", "again").returncode, 2)
+
+        out = self.repo.check()
+        self.assertEqual(out["rc"], 1)
+        self.assertIn("discipline lenses apply", "\n".join(out["problems"]))
+        self.assertEqual(self.repo.run("lenses", "apply").returncode, 0)
+        units = json.loads((self.repo.root / ".claude/review/units.json").read_text())
+        self.assertEqual(units["lenses"][-1], "gdpr")
+        units["units"][0]["lenses"].append("gdpr")
+        self.repo.write(".claude/review/units.json", json.dumps(units))
+        out = self.repo.check()
+        self.assertEqual((out["rc"], out["problems"]), (0, []), out)
+
+        shown = self.repo.run("review", "checklist", "gdpr")
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        self.assertTrue(shown.stdout.startswith("You review GDPR"), shown.stdout[:80])
+        self.assertNotEqual(self.repo.run("review", "checklist", "speed").returncode, 0)
+        plan = json.loads(self.repo.run("review", "plan").stdout)
+        self.assertEqual(plan["secondOpinion"], ["security", "supply-chain", "gdpr"])
+        self.assertIn("gdpr", plan["selected"][0]["lenses"])
+
+        self.repo.write(".agents/review-context.md", "# Review context\n")
+        self.assertTrue(any("without a section" in w for w in self.repo.check()["warnings"]))
+        (self.repo.root / ".claude/agents/gdpr-reviewer.md").unlink()
+        out = self.repo.check()
+        self.assertIn("checklist .claude/agents/gdpr-reviewer.md does not exist", "\n".join(out["problems"]))
+
     def test_runs_from_a_subdirectory_against_the_enclosing_repository(self):
         self.configured()
         self.repo.write("src/deep/er/x.txt", "x")

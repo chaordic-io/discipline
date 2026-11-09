@@ -297,6 +297,39 @@ class StateTest(unittest.TestCase):
         self.assertEqual(plan({u["id"]: {l: "stale" for l in u["lenses"]}}).get("since"), "T0")
         self.assertNotIn("since", plan({u["id"]: {u["lenses"][0]: "stale"}}))
 
+    def test_requeue_makes_reviewed_pairs_due_again_in_full(self):
+        import json
+        write_ledger({"core": {"security": "h", "tests": "h"}})
+        write_trees({"core": "T0"})
+        hashes = {"core": {"security": "h", "tests": "h", "architecture": "h"}, "web": {"tests": "h"}}
+        with mock.patch.object(review, "all_hashes", return_value=hashes), \
+                mock.patch.object(review, "repo_files", return_value=[]), redirect_stdout(io.StringIO()) as out:
+            review.cmd_requeue(argparse.Namespace(lens=["security", "architecture"], unit=None, reason="checklist now covers X"))
+        self.assertIn("requeued 1 pairs", out.getvalue())  # architecture was never reviewed: nothing to undo
+        ledger = review.reviewed()
+        self.assertEqual(ledger["core"], {"security": [], "tests": ["h"]})
+        self.assertEqual(review.pair_state("core", "security", "h", ledger, review.baselined()), "stale")
+        self.assertEqual(review.pair_state("core", "tests", "h", ledger, review.baselined()), "ok")
+        self.assertEqual(review.pair_state("core", "architecture", "h", ledger, review.baselined()), "never")
+        out = io.StringIO()
+        with mock.patch.object(review, "all_hashes", return_value=hashes), \
+                mock.patch.object(review, "repo_files", return_value=[]), \
+                mock.patch.object(review, "snapshot_tree", return_value="T1"), \
+                mock.patch.object(review, "tree_exists", return_value=True), redirect_stdout(out):
+            review.cmd_plan(argparse.Namespace(unit=["core"], lens=["security"], max_units=1, stop_at=101))
+        picked = json.loads(out.getvalue())["selected"][0]
+        self.assertEqual((picked["lenses"], picked["reason"]), (["security"], "changed"))
+        self.assertNotIn("since", picked)  # a requeued pair is reviewed in full, not as a diff
+        rows = [json.loads(l) for l in review.LEDGER.read_text().splitlines()]
+        rows.append({"unit": "core", "lens": "security", "hash": "h", "at": rows[-1]["at"] + 1})
+        review.LEDGER.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        self.assertEqual(review.reviewed()["core"]["security"], ["h"])  # reviewed again: current
+
+    def test_requeue_refuses_unknown_lenses_and_units(self):
+        for args in ({"lens": ["speed"], "unit": None}, {"lens": ["tests"], "unit": ["nope"]}):
+            with self.assertRaises(SystemExit, msg=repr(args)):
+                review.cmd_requeue(argparse.Namespace(reason="r", **args))
+
     def test_branches_merged_by_union_combine_their_reviews(self):
         """Two branches each reviewed the unit at different content; git's union merge concatenates their
         rows in any order. Each content counts as reviewed, and the latest tree wins by time."""
@@ -529,6 +562,37 @@ class ProfileTest(unittest.TestCase):
             self.lenses(overrides={"add": {"localisation": ""}})
         with self.assertRaises(lens_profile.ProfileError):
             self.lenses(overrides={"add": {"speed": "typo"}})
+
+    GDPR = {"gdpr": {"checklist": ".claude/agents/gdpr-reviewer.md", "why": "EU personal data"}}
+
+    def test_custom_lenses_follow_the_built_in_ones_and_can_be_removed(self):
+        decided = lens_profile.decide({**self.BASE, "customLenses": {**self.GDPR, "a11y": {
+            "checklist": "review/a11y.md", "why": "public sector", "secondOpinion": True}}})
+        self.assertEqual([l for l, _, _ in decided][-2:], ["gdpr", "a11y"])
+        self.assertEqual(dict((l, why) for l, _, why in decided)["gdpr"], "custom: EU personal data")
+        self.assertIn("gdpr", self.lenses(customLenses=self.GDPR))
+        self.assertNotIn("gdpr", self.lenses(customLenses=self.GDPR, overrides={"add": {}, "remove": {"gdpr": "paused"}}))
+        self.assertEqual(lens_profile.second_opinion({"customLenses": {"a11y": {"secondOpinion": True}, **self.GDPR}}),
+                         ["security", "supply-chain", "a11y"])
+
+    def test_custom_lenses_are_validated(self):
+        for bad in ({"security": {"checklist": "x.md", "why": "w"}},          # a built-in name
+                    {"GDPR": {"checklist": "x.md", "why": "w"}},              # not a lens name
+                    {"gdpr": {"checklist": "x.md", "why": " "}},              # no reason
+                    {"gdpr": {"checklist": "/etc/x.md", "why": "w"}},         # outside the repository
+                    {"gdpr": {"checklist": "../x.md", "why": "w"}},
+                    {"gdpr": {"checklist": "x.md", "why": "w", "secondOpinion": "yes"}},
+                    {"gdpr": {"checklist": "x.md", "why": "w", "severity": "high"}},
+                    {"gdpr": "x.md"}, ["gdpr"]):
+            with self.assertRaises(lens_profile.ProfileError, msg=repr(bad)):
+                self.lenses(customLenses=bad)
+
+    def test_checklist_of_a_custom_lens_is_the_repository_file(self):
+        profile = {"customLenses": self.GDPR}
+        self.assertEqual(lens_profile.checklist_path("gdpr", profile), lens_profile.ROOT / ".claude/agents/gdpr-reviewer.md")
+        self.assertEqual(lens_profile.checklist_path("security", profile).name, "security-auditor.md")
+        with self.assertRaises(lens_profile.ProfileError):
+            lens_profile.checklist_path("speed", profile)
 
     def test_invalid_values_are_reported_together(self):
         with self.assertRaises(lens_profile.ProfileError) as e:

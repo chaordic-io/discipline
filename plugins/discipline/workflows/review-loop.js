@@ -39,8 +39,9 @@ const RP = 'discipline review'
 // The read-only agent type for reviewers and verifiers: the plugin's agents/review-reader.md, whose
 // writes the plugin's PreToolUse hook (hooks/readonly_guard.py) blocks.
 const READER = 'discipline:review-reader'
-// Lenses whose refuted critical/high findings get a second, independent verifier.
-const SECOND_OPINION = ['security', 'supply-chain']
+// Lenses whose refuted critical/high findings get a second, independent verifier: the plan's
+// `secondOpinion` (the built-in ones plus custom lenses that ask for it), or these.
+let SECOND_OPINION = ['security', 'supply-chain']
 
 // ---------------------------------------------------------------- Project configuration
 // Generic defaults. Each project overrides them in .claude/review/project.json, which `discipline review plan`
@@ -85,6 +86,7 @@ const PLAN = {
   type: 'object',
   properties: {
     lenses: { type: 'array', items: { type: 'string' }, description: 'the lenses configured in units.json' },
+    secondOpinion: { type: 'array', items: { type: 'string' }, description: 'lenses whose refuted critical/high findings get a second verifier' },
     project: { type: 'object', description: 'this project\'s settings from .claude/review/project.json' },
     quota: QUOTA,
     open: { type: 'array', items: { type: 'object' } },
@@ -306,6 +308,7 @@ const plan = await agent(
 )
 if (!plan) return { aborted: true, reason: 'plan agent failed' }
 PROJECT = { ...PROJECT_DEFAULTS, ...(plan.project || {}) }
+if (Array.isArray(plan.secondOpinion) && plan.secondOpinion.length) SECOND_OPINION = plan.secondOpinion
 // units.json lists lens names (older files mapped them to paths; only the names matter now).
 const LENSES = Array.isArray(plan.lenses) ? plan.lenses : Object.keys(plan.lenses || {})
 const checklist = (l) => `${l} → \`${RP} checklist ${l}\``

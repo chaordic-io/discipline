@@ -40,6 +40,7 @@ class GuardTest(unittest.TestCase):
             "eslint --fix src", "prettier --write .", "gofmt -w .", "ruff format", "black src",
             "vitest -u", "jest --updateSnapshot", "go test ./... -update",
             "discipline review mark a:tests", "discipline review baseline --reason x", "discipline review record x.json", "discipline lenses apply",
+            "discipline review requeue --lens gdpr --reason x", "discipline lenses new gdpr --why x",
             "discipline decisions new 'x'", "discipline decisions index", "discipline work",
             "cd src && rm x", "find . -name '*.tmp' | xargs rm",
         ]:

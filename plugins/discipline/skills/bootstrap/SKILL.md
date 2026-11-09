@@ -119,7 +119,7 @@ Ask only the rows that apply, naming the files `discipline init --survey` found.
 | 6 | What sensitive data does it hold? Personal data, payments, health data, several tenants' data, or none. | `profile.data`, the security section of the review context, `CLAUDE.md` domain rules | (from the description) |
 | 7 | Does the spec carry business rules worth pinning to tests by ID (calculations, permissions, lifecycles, legal rules)? If so, which files are tests? | `profile.specRules` | Yes for apps with business rules: `{"tests": [<the test file globs>]}`. No (`null`) for content sites, CLIs and thin wrappers. |
 | 8 | Does the product call AI models, and how? Any of `rag` (answers from retrieved documents), `assistive` (suggests or drafts; a person decides), `agentic` (acts through tools in several steps), or none. | `profile.ai` | From the description. An agent that searches documents is `rag` and `agentic`. |
-| 9 | Should any reviewer be on or off against the rules above, and why? | `profile.overrides` | No overrides. |
+| 9 | Should any reviewer be on or off against the rules above, and why? Does the project need a review lens of its own (a regulation, a house standard, a domain risk none of the lenses above covers)? | `profile.overrides`; `discipline lenses new <name> --why <reason>` for a lens of its own | No overrides and no lenses of its own. |
 
 ### Batch 2: the stack (decides the gate and the tools)
 
@@ -148,4 +148,5 @@ Ask only the rows that apply, naming the files `discipline init --survey` found.
 A second language, a mobile client, a public API, a first AI feature: edit `.agents/profile.json`, run
 `discipline lenses apply`, add the newly enabled lens to the units where it applies, fill its section
 of `.agents/review-context.md`, and add a decision in `docs/decisions/`. Until then the gate fails, which
-is the point.
+is the point. The same goes for a lens of the project's own: `discipline lenses new`, then fill in its
+checklist and context section, `discipline lenses apply`, and add it to the units where it applies.

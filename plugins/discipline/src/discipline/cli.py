@@ -3,9 +3,10 @@
     discipline init [DIR]             set a repository up from the templates (never overwrites)
     discipline check                  the gate checks (problems fail, warnings don't)
     discipline review <command>       review-loop bookkeeping: plan, show, checklist, diff, touched,
-                                      record, mark, status, open, questions, answer, quota
-    discipline lenses <show|apply|check>
-                                      the review lenses the project profile selects
+                                      record, mark, requeue, status, open, questions, answer, quota
+    discipline lenses <show|apply|check|new>
+                                      the review lenses the project profile selects; new adds
+                                      the project's own lens
     discipline spec-rules             spec rules and the tests that pin them
     discipline ai-evals               prompts and their eval sets
     discipline handover               size budgets of the files every session reads

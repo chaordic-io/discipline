@@ -4,6 +4,7 @@
 State lives in .claude/review/. The first three are committed and append-only (one JSON object per
 line, merged with git's union driver, so branches combine their reviews without conflicts):
   ledger.jsonl   {unit, lens, hash, at}: the (unit, lens) pair was reviewed at that content
+                 ({unit, lens, requeue, at}: reviews of the pair before that row no longer count)
   history.jsonl  one line per finding outcome (fixed, rejected, open, question, answered), with "at"
   trees.jsonl    {unit, tree, at}: the tree a fully current unit was marked at (the next diff base)
   run.json       per-run snapshot taken by `plan` (unit hashes + git tree) for `diff`/`mark`; ignored
@@ -26,7 +27,11 @@ Commands (all print to stdout; `show`, `diff`, `status` are read-only):
   mark UNIT:LENS ...   mark pairs reviewed at the current content; also advance
                        pairs that were current at `plan` time (their only changes since
                        are the fixer's, which the delta review covered)
-  checklist LENS       print a lens's checklist (from the plugin), for reviewers
+  requeue --lens L ... --reason R [--unit ID ...]
+                       make those (unit, lens) pairs due again, in full, although their code did not
+                       change (e.g. after the lens's checklist changed); earlier reviews stay in history
+  checklist LENS       print a lens's checklist (the plugin's, or the project's own for a custom
+                       lens in the profile's customLenses), for reviewers
   evidence [--since D] a Markdown report: coverage per unit and lens with dates, and every finding with
                        its scenario, fix, verifier's reasoning and the snapshot it was reviewed at
   status               coverage matrix (units x lenses): ok / baseline / stale / never; also open questions
@@ -205,7 +210,9 @@ def reviewed() -> dict[str, dict[str, list[str]]]:
     out: dict[str, dict[str, list[str]]] = {}
     for r in read_jsonl(LEDGER):
         seen = out.setdefault(r["unit"], {}).setdefault(r["lens"], [])
-        if r["hash"] not in seen:
+        if r.get("requeue"):
+            seen.clear()  # reviewed before, but due again in full: the pair stays known (stale, not never)
+        elif r["hash"] not in seen:
             seen.append(r["hash"])
     return out
 
@@ -214,14 +221,15 @@ def baselined() -> set[tuple[str, str, str]]:
     """(unit, lens, hash) accepted by `baseline` and never actually reviewed at that content."""
     base, real = set(), set()
     for r in read_jsonl(LEDGER):
-        (base if r.get("baseline") else real).add((r["unit"], r["lens"], r["hash"]))
+        if not r.get("requeue"):
+            (base if r.get("baseline") else real).add((r["unit"], r["lens"], r["hash"]))
     return base - real
 
 
 def pair_state(uid: str, lens: str, now: str, ledger: dict, base: set) -> str:
     seen = ledger.get(uid, {}).get(lens, [])
     if now not in seen:
-        return "stale" if seen else "never"
+        return "stale" if lens in ledger.get(uid, {}) else "never"
     return "baseline" if (uid, lens, now) in base else "ok"
 
 
@@ -261,7 +269,7 @@ def cmd_plan(a) -> None:
         lenses = [l for l in u["lenses"] if (not a.lens or l in a.lens)
                   and (hashes[u["id"]][l] not in done.get(l, []) or l in unbased)]
         if lenses:
-            seen = any(done.get(l) for l in u["lenses"])
+            seen = any(l in done for l in u["lenses"])
             entry = {"unit": u["id"], "lenses": lenses,
                      "reason": "baseline, reviewed in full on request" if unbased else ("changed" if seen else "never reviewed"),
                      "files": len(unit_files(u, files))}
@@ -297,8 +305,10 @@ def cmd_plan(a) -> None:
             entry["changed"] = changed_files(entry["since"], tree, units[entry["unit"]])
     save(RUN, {"tree": tree, "hashes": hashes, "selected": selected})
     project = load(PROJECT_FILE, {})
+    from . import lenses as lens_rules  # noqa: PLC0415
     print(json.dumps({
         "lenses": list(UNITS["lenses"]),
+        "secondOpinion": lens_rules.second_opinion(lens_rules.project_profile()),
         "project": {k: v for k, v in project.items() if not k.startswith("_")},
         "quota": quota(a.stop_at, getattr(a, "stop_at_5h", None)),
         "open": carried(),
@@ -376,9 +386,13 @@ def cmd_answer(a) -> None:
 def cmd_checklist(a) -> None:
     """Print a lens's checklist (the plugin agent's instructions), for reviewers in the workflow."""
     from . import lenses, plugin  # noqa: PLC0415
-    if a.lens not in lenses.CATALOGUE:
-        sys.exit(f"unknown lens {a.lens} (one of {', '.join(lenses.CATALOGUE)})")
-    print(plugin.body(plugin.agent_file(lenses.CATALOGUE[a.lens])))
+    try:
+        path = lenses.checklist_path(a.lens)
+    except lenses.ProfileError as e:
+        sys.exit(str(e))
+    if not path.is_file():
+        sys.exit(f"the checklist of lens {a.lens} is missing: {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}")
+    print(plugin.body(path))
 
 
 def _date(at) -> str:
@@ -392,7 +406,8 @@ def evidence(since: str | None = None) -> str:
     rows = read_jsonl(LEDGER)
     last: dict[tuple, int] = {}
     for r in rows:
-        last[(r["unit"], r["lens"])] = r.get("at", 0)
+        if not r.get("requeue"):
+            last[(r["unit"], r["lens"])] = r.get("at", 0)
     ledger = reviewed()
     base = baselined()
     lenses = list(UNITS["lenses"])
@@ -717,6 +732,27 @@ def cmd_baseline(a) -> None:
     print(f"baselined {len(rows)} pairs: accepted as they are, not reviewed; from now on their changes are reviewed")
 
 
+def cmd_requeue(a) -> None:
+    if not a.reason.strip():
+        sys.exit("give the reason (--reason), e.g. \"the gdpr checklist now covers retention\"")
+    units = {u["id"]: u for u in UNITS["units"]}
+    bad = [u for u in (a.unit or []) if u not in units]
+    if bad:
+        sys.exit(f"unknown units: {', '.join(bad)}")
+    known = set(UNITS["lenses"])
+    bad = [l for l in a.lens if l not in known]
+    if bad:
+        sys.exit(f"lenses not configured in units.json: {', '.join(bad)}")
+    ledger = reviewed()
+    at = next_at(LEDGER)
+    # Only pairs with a review to undo: a never-reviewed pair is due already.
+    rows = [{"unit": uid, "lens": l, "requeue": a.reason.strip(), "at": at}
+            for uid, u in units.items() if not a.unit or uid in a.unit
+            for l in u["lenses"] if l in a.lens and ledger.get(uid, {}).get(l)]
+    append_jsonl(LEDGER, rows)
+    print(f"requeued {len(rows)} pairs: the next runs review them in full")
+
+
 def cmd_status(_a) -> None:
     hashes = all_hashes(repo_files())
     ledger = reviewed()
@@ -780,11 +816,16 @@ def main(argv: list[str] | None = None) -> int:
     qu = sub.add_parser("quota")
     qu.add_argument("--stop-at", type=float, default=None)
     qu.add_argument("--stop-at-5h", type=float, default=None)
+    rq = sub.add_parser("requeue")
+    rq.add_argument("--lens", action="append", required=True)
+    rq.add_argument("--unit", action="append")
+    rq.add_argument("--reason", required=True)
     tc = sub.add_parser("touched")
     tc.add_argument("--unit", action="append")
     a = p.parse_args(argv)
     {"plan": cmd_plan, "show": cmd_show, "diff": cmd_diff, "record": cmd_record, "mark": cmd_mark, "baseline": cmd_baseline,
      "status": cmd_status, "open": cmd_open, "quota": cmd_quota, "touched": cmd_touched,
-     "questions": cmd_questions, "answer": cmd_answer, "checklist": cmd_checklist, "evidence": cmd_evidence}[a.cmd](a)
+     "questions": cmd_questions, "answer": cmd_answer, "checklist": cmd_checklist, "evidence": cmd_evidence,
+     "requeue": cmd_requeue}[a.cmd](a)
     return 0
 

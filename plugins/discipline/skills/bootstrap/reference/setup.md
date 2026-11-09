@@ -20,7 +20,19 @@ Read from /discipline:bootstrap when a step needs it.
 
 `discipline lenses` applies these rules to `.agents/profile.json`. The profile's `overrides`
 turn a lens on or off by hand, with the reason written next to it (for example, localisation ahead of
-a launch in a second market). `discipline lenses apply` writes the result into `.claude/review/units.json`,
+a launch in a second market, or no duplication lens for a generated SDK).
+
+**A lens of the project's own.** Where a project has a concern none of the lenses covers (a
+regulation such as GDPR, accessibility for a public-sector product, a house standard),
+`discipline lenses new <name> --why <reason>` adds one. It writes a checklist from the template to
+`.claude/agents/<name>-reviewer.md` (so it also works by hand as a project agent; `--checklist` puts it
+elsewhere), declares it in the profile's `customLenses`, and adds its section to
+`.agents/review-context.md`. Write the checklist like the plugin's: read-only, numbered items concrete
+enough that a finding names a file and line, and what belongs to other lenses. `--second-opinion` gives
+its refuted critical/high findings a second verifier, as security and supply-chain have. A custom lens is
+on while it is declared, and `overrides.remove` turns it off. Changing a checklist does not re-queue
+earlier reviews; when its rules really change, `discipline review requeue --lens <name> --reason <why>`
+makes every unit's pair due again, in full. `discipline lenses apply` writes the result into `.claude/review/units.json`,
 and `discipline check` fails while the two disagree, so the gate catches a profile change that was never
 applied.
 
