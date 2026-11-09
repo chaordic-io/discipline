@@ -4,7 +4,22 @@ Each release lists what changed and, under **Migration**, what a repository set 
 version has to do (`/discipline:upgrade` walks through it). Versions follow semantic versioning:
 a minor release adds without breaking, a major one needs migration steps.
 
-## Unreleased
+## 0.4.1 (2026-11-09)
+
+- **Version metadata corrected.** The v0.3.0 and v0.4.0 tags were cut with the package and plugin
+  manifest still saying 0.2.0, so `discipline --version` reported 0.2.0, `discipline init` stamped
+  profiles with 0.2.0 and `discipline check` never suggested an upgrade. Both now say 0.4.1; this
+  changelog has the 0.3.0 and 0.4.0 entries (0.3.0's changes had been listed under 0.2.0), and the
+  README pins the gate to `v0.4.1`. No code changes.
+
+### Migration (from 0.4.0, or from 0.3.0 or 0.2.0 tags)
+
+1. Apply the migration steps of every release after the version in `.agents/profile.json`'s
+   `discipline` field (a profile set up from the v0.3.0 or v0.4.0 tag says 0.2.0; check which steps
+   below are already done).
+2. Pin `v0.4.1` in the gate and set `"discipline": "0.4.1"` in `.agents/profile.json`.
+
+## 0.4.0 (2026-11-09)
 
 - **Lenses of the project's own.** The profile's new `customLenses` field declares lenses next to the
   built-in ones, {name: {checklist, why, secondOpinion?}}, each with a checklist kept in the repository.
@@ -20,10 +35,34 @@ a minor release adds without breaking, a major one needs migration steps.
   earlier reviews stay in the history; the pairs show as `stale` until reviewed.
 - The read-only guard also blocks `discipline review requeue` and `discipline lenses new` for reviewers.
 
-### Migration (from 0.2.0)
+### Migration (from 0.3.0)
 
 None required. Optionally add `"customLenses": {}` to `.agents/profile.json`, so the field is there to
 fill in.
+
+## 0.3.0 (2026-11-06)
+
+- **Adopting discipline on an existing project:** bootstrap surveys first (`discipline init
+  --survey`: agent instructions, specs, decision records, roadmap notes, the gate and CI, uncommitted
+  changes, the size of the code) and asks a batch of adoption questions before copying anything, so
+  nothing the team wrote is merged or moved without their answer. `discipline review baseline`
+  accepts existing code without reviewing it (shown as `baseline`, never `ok`; naming a unit in a run
+  reviews it in full). `decisionsElsewhere` in the profile keeps an existing decision folder where it
+  is, linked from the index and searched. Gate checks the existing code fails are ratcheted, fixed as
+  planned work or left out, each by the user's choice; never fixed as part of setup.
+- **Resuming after a crash:** the work file has an "In progress" section, written before a step that
+  edits files and cleared when it is done. A `SessionStart` hook shows every new session the
+  continuation point, an unfinished step and the changes newer than the work file; a `Stop` hook asks
+  the agent once to update the work file when code changed after it (`DISCIPLINE_STOP_CHECK=0` turns
+  it off); `discipline work` and `discipline check` warn about a stale work file.
+- **Team preferences start empty:** the `.agents/USER.md` template no longer suggests the plugin
+  author's own preferences; it lists the kinds worth asking about, and bootstrap records only what
+  the team says.
+
+### Migration (from 0.2.0)
+
+1. Add the "In progress" section to each work file (see the template in `discipline work`'s source
+   or a newly created work file), and the "In progress" sentence to `CLAUDE.md`'s opening paragraph.
 
 ## 0.2.0 (2026-11-05)
 
@@ -43,22 +82,6 @@ fill in.
   are back, and the review context's architecture section now has two fields to fill in: layers, and
   invariants. A test keeps checklist numbering free of gaps.
 - **Gate:** `discipline check` warns about a lens that is on but used by no unit.
-- **Adopting discipline on an existing project:** bootstrap surveys first (`discipline init
-  --survey`: agent instructions, specs, decision records, roadmap notes, the gate and CI, uncommitted
-  changes, the size of the code) and asks a batch of adoption questions before copying anything, so
-  nothing the team wrote is merged or moved without their answer. `discipline review baseline`
-  accepts existing code without reviewing it (shown as `baseline`, never `ok`; naming a unit in a run
-  reviews it in full). `decisionsElsewhere` in the profile keeps an existing decision folder where it
-  is, linked from the index and searched. Gate checks the existing code fails are ratcheted, fixed as
-  planned work or left out, each by the user's choice; never fixed as part of setup.
-- **Resuming after a crash:** the work file has an "In progress" section, written before a step that
-  edits files and cleared when it is done. A `SessionStart` hook shows every new session the
-  continuation point, an unfinished step and the changes newer than the work file; a `Stop` hook asks
-  the agent once to update the work file when code changed after it (`DISCIPLINE_STOP_CHECK=0` turns
-  it off); `discipline work` and `discipline check` warn about a stale work file.
-- **Team preferences start empty:** the `.agents/USER.md` template no longer suggests the plugin
-  author's own preferences; it lists the kinds worth asking about, and bootstrap records only what
-  the team says.
 
 ### Migration (from 0.1.0)
 
@@ -69,9 +92,7 @@ fill in.
    purpose, and the shared machinery to use instead of re-building (see the template).
 3. If your review context's `## architecture` section still holds the template's placeholder text,
    which includes the lost checklist items, replace it with your layers and invariants.
-4. Add the "In progress" section to each work file (see the template in `discipline work`'s source
-   or a newly created work file), and the "In progress" sentence to `CLAUDE.md`'s opening paragraph.
-5. Pin `v0.2.0` in the gate and set `"discipline": "0.2.0"` in `.agents/profile.json`.
+4. Pin `v0.2.0` in the gate and set `"discipline": "0.2.0"` in `.agents/profile.json`.
 
 ## 0.1.0 (2026-11-05)
 
