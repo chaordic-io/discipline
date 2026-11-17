@@ -115,11 +115,13 @@ class MergeTest(unittest.TestCase):
     def test_decisions_from_two_branches_merge_and_the_index_is_regenerated(self):
         r = self.repo
         r.git("checkout", "-q", "-b", "x")
-        self.assertEqual(r.run("decisions", "new", "Per-org numbering").returncode, 0)
+        self.assertEqual(r.run("decisions", "new", "Per-org numbering", "--kind", "product", "--by", "people",
+                                     "--people", "Ann", "--area", "numbering").returncode, 0)
         r.commit("x")
         r.git("checkout", "-q", "main")
         r.git("checkout", "-q", "-b", "y")
-        self.assertEqual(r.run("decisions", "new", "Half-up rounding").returncode, 0)
+        self.assertEqual(r.run("decisions", "new", "Half-up rounding", "--kind", "technical", "--by", "agent",
+                                     "--area", "money").returncode, 0)
         r.commit("y")
         r.git("checkout", "-q", "main")
         r.git("merge", "-q", "--no-edit", "x")
@@ -178,8 +180,8 @@ class WorkFileTest(unittest.TestCase):
             r.git("checkout", "-q", "-b", branch)
             r.run("work")
             path = r.root / ".agents/work" / f"{branch.replace('/', '--')}.md"
-            path.write_text(path.read_text().replace("- **Who:** <!--", f"- **Who:** {who} <!--")
-                            .replace("- **Owns:** <!--", f"- **Owns:** src/{who.lower()}/ <!--"))
+            path.write_text(path.read_text().replace("who: ", f"who: {who}", 1)
+                            .replace("owns: []", f"owns: [src/{who.lower()}/]", 1))
             r.commit(f"start {branch}")
         listed = r.run("work", "--list").stdout  # run on feature/b: feature/a's file isn't in this checkout
         self.assertIn("| feature/a | Ann | ? | src/ann/ |", listed)
@@ -219,22 +221,26 @@ class DecisionsTest(unittest.TestCase):
         c = decisions.new("Half-up rounding", today="2026-11-05", directory=d)
         self.assertEqual([a.name, b.name, c.name], ["2026-11-04-per-org-numbering.md", "2026-11-04-per-org-numbering-2.md",
                                                     "2026-11-05-half-up-rounding.md"])
-        c.write_text(c.read_text().replace("<one or two words from the spec's areas, e.g. invoicing, permissions>", "money")
-                     + "- **Superseded by:** 2026-11-06-banker.md\n")
+        c.write_text(c.read_text().replace("kind: <product | technical>", "kind: technical")
+                     .replace("decided-by: <agent | together | people>", "decided-by: together")
+                     .replace("people: []", "people: [Ann]").replace("area: []", "area: [money]")
+                     .replace("superseded-by:", "superseded-by: 2026-11-06-banker.md"))
         items = decisions.entries(d)
         self.assertEqual([e.date for e in items], ["2026-11-05", "2026-11-04", "2026-11-04"])
         index = decisions.render(items)
-        self.assertIn("| 2026-11-05 | [Half-up rounding](decisions/2026-11-05-half-up-rounding.md) | money | superseded |", index)
+        self.assertIn("| 2026-11-05 | [Half-up rounding](decisions/2026-11-05-half-up-rounding.md) | technical | "
+                      "together (Ann) | money | superseded |", index)
+        self.assertIn("| 2026-11-04 | [Per-org numbering!](decisions/2026-11-04-per-org-numbering.md) |  |  |  |  |", index)
 
     def test_problems_stale_index_badly_named_files_and_missing_area(self):
         d, index = self.dir / "decisions", self.dir / "DECISIONS.md"
-        decisions.new("Something", today="2026-11-05", directory=d)
+        decisions.new("Something", today="2026-11-05", directory=d, kind="technical", by="agent")
         (d / "notes.md").write_text("# not a decision\n")
         errs, warns = decisions.problems(d, index)
         self.assertEqual(len(errs), 2)
         self.assertIn("out of date", errs[0])
         self.assertIn("notes.md", errs[1])
-        self.assertIn("without an Area", warns[0])
+        self.assertIn("without an area", warns[0])
         index.write_text(decisions.render(decisions.entries(d)))
         (d / "notes.md").unlink()
         self.assertEqual(decisions.problems(d, index)[0], [])

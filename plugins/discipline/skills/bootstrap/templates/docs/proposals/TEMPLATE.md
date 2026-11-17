@@ -1,6 +1,12 @@
-# Proposal: <feature>
+---
+title: <feature>
+status: proposal             # proposal | accepted | building | built | dropped
+date: <YYYY-MM-DD>
+area: [<one or two of the spec's areas>]
+decisions: []                # the docs/decisions/ files this proposal led to
+---
 
-> **Status:** proposal, <YYYY-MM-DD>. Points marked *(convention)* are settled here without asking. The
+> Points marked *(convention)* are settled here without asking. The
 > questions in §Q are the user's call. Statements about laws, standards or third-party behaviour cite a
 > source; those marked **(verify)** must be checked against the primary source before the step that
 > implements them. The spec and `docs/decisions/` are updated in the build steps, not here.
@@ -41,7 +47,12 @@ required), versioning of anything that feeds calculations over time. -->
 
 ## 4. Options considered
 
-<!-- Each option with its trade-offs and why it was or wasn't chosen. -->
+<!-- Each option with its trade-offs and why it was or wasn't chosen. Check first what was turned down
+before (`discipline decisions list --area <area>`, `discipline decisions search <words>`): an option an
+earlier decision rejected is listed only with why that reason no longer holds. When the proposal is
+answered, the choice and the options turned down go into a decision (`--kind technical` or `product`),
+so the reasons outlive the proposal. A proposal that is dropped keeps `status: dropped` and says why
+here. -->
 
 ## 5. Tests and verification
 

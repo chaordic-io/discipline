@@ -34,7 +34,8 @@ Commands are the `discipline` CLI from the plugin; `discipline help` lists them.
    *(verify)* until checked against the primary source. Batch the questions; build only once they are
    answered.
 3. **Spec first.** Read the relevant `docs/SPEC.md` section, change the behaviour, update the spec, and
-   add a decision in `docs/decisions/`: trigger, decision, alternatives turned down, spec reference.
+   add a decision in `docs/decisions/` (`--kind product`): trigger, decision, alternatives turned
+   down, spec reference.
 4. **Implement with tests in the same change.** A regression test for every fix, checked to fail
    without the fix where that is possible.
 5. **Verify** (next section). The gate must pass before anything is called done.
@@ -45,8 +46,9 @@ Commands are the `discipline` CLI from the plugin; `discipline help` lists them.
    permission (for everyone, or for this person in their `.agents/USER.local.md`), run it without
    asking, within the limits recorded there; otherwise propose the run and wait for the go-ahead.
 7. **Write it down as you go.** Record each user decision, design answer and backlog item the moment it
-   is made, not at the end: product decisions as files in `docs/decisions/` (`discipline decisions
-   new "<title>"`); this branch's continuation point in its work file (`discipline work`), and, before
+   is made, not at the end: product and technical decisions as files in `docs/decisions/`
+   (`discipline decisions new "<title>" --kind … --by …`), with what was turned down and what was
+   tried and abandoned; this branch's continuation point in its work file (`discipline work`), and, before
    a step that edits files, that step and its files under "In progress" (back to "nothing" when it is
    done); the shared
    roadmap and shared open questions in `.agents/STATUS.md`; build conventions in
@@ -64,10 +66,24 @@ The defence is to keep every assumption visible until the user has confirmed or 
   proposals, the open questions in `STATUS.md` and `discipline review questions`. An answer that exists
   is applied and cited (the decision's file), never asked again. If the new request conflicts with an
   earlier decision, don't ask from scratch: ask "this would change <decision>: keep it, or replace it?",
-  and a replacement gets a new decision that marks the old one `Superseded by`.
+  and a replacement gets a new decision that names it in the old one's `superseded-by`.
+- **Look before designing.** Before proposing or building a design, list the technical decisions for
+  the area (`discipline decisions list --kind technical --area <area>`) and search for the approach
+  (`discipline decisions search <words>`, which also finds proposals, dropped ones included). An
+  alternative turned down or an approach tried and abandoned is not proposed again unless the reason
+  it was dropped no longer holds; then say why, and the new decision supersedes the old one.
 - **What an agent decides, and records:** technical choices that are reversible and invisible to users
-  (a library within the chosen stack, an internal name, a file layout, an index). Record each as a
-  convention: in the decision's "Conventions taken during the build", or *(convention)* in a proposal.
+  (a library within the chosen stack, an internal name, a file layout, an index). Small ones (a name, a
+  layout) are conventions: in the decision's "Conventions taken during the build", or *(convention)* in
+  a proposal. Anything someone could reasonably revisit or get wrong again (a dependency, a data
+  store, a boundary or layering rule, a protocol or format, a pattern the code is to follow, a
+  performance or security trade-off, an approach that was tried and abandoned) is a technical decision
+  of its own: `discipline decisions new "<title>" --kind technical --by agent`, with the alternatives
+  turned down and why, mentioned in the report so a developer can revisit it.
+- **Technical decisions people take part in are recorded too.** `--by together --people <names>` when
+  a developer and an agent settled it in conversation; `--by people --people <names>` when developers
+  decided without an agent (an agent told of one records it, quoting them). `--by agent` is only for
+  what an agent may decide alone; a product decision is never `agent`.
 - **What the user decides, always:** anything that changes what a user sees or can do, money, permissions
   and roles, personal or tenant data, legal or contractual behaviour, cost, external commitments
   (APIs others depend on), and anything hard to undo (data migrations, deletions, published formats).
@@ -214,10 +230,14 @@ stand. So:
   branch merges.
 - **`HISTORY.md` is read from the end.** A few lines per entry, with pointers, added at the end. Older
   entries move to `docs/history.md` when it passes its budget.
-- **Decisions are read by search.** One file per decision in `docs/decisions/`, each with `Area` and
-  `Spec`, so readers find the ones that concern them (`grep -rln "Area: <area>" docs/decisions/`); a
-  replaced decision gets `Superseded by` instead of being edited. `docs/DECISIONS.md` is the generated
+- **Decisions are read by search.** One file per decision in `docs/decisions/`, each with front matter
+  (kind, who decided, area, spec), so readers list the ones that concern them (`discipline decisions
+  list --area <area>`, `--kind technical`, `--spec <section>`); a replaced decision gets `superseded-by`
+  instead of being edited. `docs/DECISIONS.md` is the generated
   index.
+- **Records carry front matter.** A file that is one record of a kind (a decision, a proposal, a work
+  file) keeps its fields in YAML front matter, its title included (not repeated as a `# heading`), so
+  tools can list, filter and check them instead of every reader parsing prose. Files read as a whole (`STATUS.md`, `HISTORY.md`, the spec) don't need it.
 - **`CLAUDE.md` holds rules, not explanations.** Reasoning goes to the engineering principles (the
   project's own in `.agents/ENGINEERING.md`), history to
   `HISTORY.md`, decisions to `docs/decisions/`.

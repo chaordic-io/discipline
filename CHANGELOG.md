@@ -4,6 +4,50 @@ Each release lists what changed and, under **Migration**, what a repository set 
 version has to do (`/discipline:upgrade` walks through it). Versions follow semantic versioning:
 a minor release adds without breaking, a major one needs migration steps.
 
+## 0.5.0 (2026-11-16)
+
+- **Technical decisions are recorded like product ones, with who made them.** Each decision in
+  `docs/decisions/` now has YAML front matter: its `title` (no longer repeated as a `# heading`; the
+  file name's slug is made from it once and never changes), `kind` (product | technical), `decided-by` (agent alone |
+  together, agents and people | people, without an agent), `people`, `area`, `spec`, `tests` and
+  `superseded-by`. Its body has sections for the trigger, the decision, the **alternatives turned
+  down** and the approaches **tried and abandoned**, each with the reason. `/discipline:working` says which
+  technical choices get a decision of their own (a dependency, a store, a boundary, a pattern, a
+  protocol, a trade-off, an abandoned approach) and that agents check what was turned down before
+  designing. The index shows each decision's kind and who decided it.
+- **`discipline decisions new "<title>" --kind K --by B [--people …] [--area …]`** fills the front matter
+  in; **`discipline decisions list [--kind] [--by] [--area] [--spec] [--all]`** lists the decisions in force
+  (reviewers and verifiers use it instead of grep); **`discipline decisions search`** also searches
+  proposals, showing their status, so a dropped proposal is found too; **`discipline decisions
+  migrate`** moves decisions and proposals written before 0.5 into front matter.
+- **The gate** fails on a decision whose front matter has no `title`, whose `kind` or `decided-by` isn't
+  one of the allowed values, whose front matter can't be read, or whose `superseded-by` names a missing file; it warns about a product
+  decision made by an agent alone, a decision made with people who aren't named, decisions still in
+  the old format, and proposals without a `status`.
+- **Architecture lens:** a new checklist item, "decisions still hold": the code follows the technical
+  decisions in force, and nothing they turned down or record as abandoned has come back without a new
+  decision superseding them.
+- **Front matter for records.** Proposals (`title`, `status`: proposal | accepted | building | built |
+  dropped, `date`, `area`, `decisions`; the `> **Status:**` line is gone) and work files (`branch`, `started`, `who`, `roadmap`, `owns`) carry it
+  too; `discipline work --list` reads it. Work files with the old `- **Who:**` header are still read.
+  The front matter is read by a small standard-library parser (`discipline.frontmatter`).
+
+### Migration (from 0.4.x)
+
+1. `discipline decisions migrate` converts every decision and proposal without front matter (a
+   decision's or proposal's `# heading` becomes its `title`, a proposal's `> **Status:**` line its
+   `status` and `date`) and regenerates the index. Kinds that said "user …" become `product` / `people` with `people: [user]`: replace `user`
+   with the names. Those that said "agent …" become `technical` / `agent`. Those it lists as needing it
+   get `kind` and `decided-by` filled in by hand (the gate fails until they are).
+2. Check each migrated proposal's `status` and fill in its `area`; the gate warns about proposals
+   without a `title` and `status`.
+3. Merge the template changes into the project's copies: `docs/decisions/README.md`,
+   `docs/proposals/TEMPLATE.md`, `.agents/RESUME.md`, and the decision sentence of `CLAUDE.md`'s opening
+   paragraph (technical decisions, who decided, check what was turned down before designing).
+4. Optionally move each work file's `Who`, `Roadmap item` and `Owns` bullets into front matter (see a
+   newly created work file); the old header still works.
+5. Pin `v0.5.0` in the gate and set `"discipline": "0.5.0"` in `.agents/profile.json`.
+
 ## 0.4.1 (2026-11-09)
 
 - **Version metadata corrected.** The v0.3.0 and v0.4.0 tags were cut with the package and plugin

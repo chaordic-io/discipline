@@ -217,7 +217,31 @@ Some rules run through all of it:
   cause and fixed with a regression test, whether this change caused it or not. Re-running until green
   is not a fix.
 - **Decisions are written down when they are made**, not at the end, so a crash or a context reset
-  loses nothing.
+  loses nothing. Product and technical decisions alike, each in its own file with front matter that
+  says what kind it is and who made it: an agent alone, agents and developers together, or developers
+  on their own. Each records the alternatives turned down and the approaches tried and abandoned, with
+  the reasons, and agents check them before designing, so a rejected solution isn't proposed again
+  unless its reason no longer holds:
+
+  ```markdown
+  ---
+  title: Invoice numbers from a database sequence
+  date: 2026-11-16
+  kind: technical              # product | technical
+  decided-by: together         # agent | together | people
+  people: [Ann]
+  area: [numbering]
+  spec: ["4.1"]
+  tests: [tests/test_numbering.py]
+  superseded-by:
+  ---
+
+  ## Trigger · ## Decision · ## Alternatives turned down · ## Tried and abandoned
+  ```
+
+  `discipline decisions list --kind technical --area numbering` lists the ones in force;
+  `discipline decisions search <words>` also finds proposals (dropped ones included) and answered
+  review questions. Proposals and work files carry front matter too.
 - **Verification has layers**, in order of cost: targeted checks while iterating, the gate, slow suites,
   screenshots for UI, claims tests (copy can't claim what the code doesn't do), conformance evidence for
   rule engines, the review loop.
@@ -322,7 +346,7 @@ flowchart TD
 | security | Data isolation, authorization, authentication, injection, secrets, delivery headers. |
 | behaviour | Code that contradicts the spec, the recorded decisions or the proposals; tests that pin the wrong values. Raises questions where the intent isn't written down. |
 | tests | Untested behaviour and error paths, assertions that can't fail, missing property tests, mocks of real services. |
-| architecture | Layering, duplicated concepts, transactions, schema constraints, observability (traces, quiet logs). |
+| architecture | Layering, duplicated concepts, transactions, schema constraints, technical decisions still holding (nothing they turned down has come back), observability (traces, quiet logs). |
 | duplication | Copy-paste and near-duplicate business rules. |
 | simplicity | Superfluous structure: pass-through layers, one-implementation interfaces, unused options, special cases and re-built machinery that existing code already expresses. Not against abstraction: each finding names the simpler form. |
 | supply-chain | New dependencies, install-time code, pinning, licences, CI and image provenance. |
@@ -428,7 +452,7 @@ flowchart LR
 | `.agents/work/<branch>.md` | One per branch (`discipline work`): who works on it, what it owns, its continuation point, the step in progress, and its state. `discipline work --list` shows every branch in flight. Deleted when the branch merges. |
 | `.agents/USER.md`, `USER.local.md` | The team's roles and shared preferences; each person's own, not committed. |
 | `.agents/HISTORY.md` | A few lines per entry, added at the end; older entries move to `docs/history.md`. |
-| `docs/decisions/` | One file per decision (`discipline decisions new`), each with `Area` and `Spec`, read by search; `docs/DECISIONS.md` is the generated index. |
+| `docs/decisions/` | One file per product or technical decision (`discipline decisions new`), with front matter (kind, who decided, area, spec), read by `discipline decisions list` and `search`; `docs/DECISIONS.md` is the generated index. |
 | `CLAUDE.md` | Rules, not explanations. |
 
 `discipline check` warns (never fails) when one of them passes its budget.
@@ -477,7 +501,7 @@ duplication, vulnerability and licence scans, and `discipline check`, pinned so 
 agree:
 
 ```sh
-uvx --from "git+https://github.com/chaordic-io/discipline@v0.4.1#subdirectory=plugins/discipline" discipline check
+uvx --from "git+https://github.com/chaordic-io/discipline@v0.5.0#subdirectory=plugins/discipline" discipline check
 ```
 
 `discipline check` fails when a file belongs to no review unit (or to two), when the units disagree with
@@ -500,7 +524,7 @@ its eval set and facets (if the product calls models). Over-budget handover file
 | `discipline spec-rules` · `ai-evals` · `handover` | The individual checks, with details. |
 | `discipline doc engineering · working · stack · bootstrap · upgrade` | The guides, as text. |
 | `discipline work [--list]` | This branch's work file, created if missing; or every branch in flight, from git. |
-| `discipline decisions new · index · check · search` | A new decision file; the index; search decisions and answered questions before asking. |
+| `discipline decisions new · list · search · index · check · migrate` | A new decision file; the decisions in force, filtered by kind, who decided, area or spec section; search decisions, proposals and answered questions before asking or designing; the index; convert pre-0.5 decisions to front matter. |
 | `discipline assumptions` | Assumptions in the docs not yet confirmed. |
 
 It acts on the git repository around the current directory. Inside Claude Code the plugin puts it on

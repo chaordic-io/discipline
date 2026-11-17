@@ -7,7 +7,7 @@
 Each branch has its own continuation point in `.agents/work/<branch>.md` (a "/" in the branch name
 becomes "--"), so people and sessions on different branches never overwrite each other's. What is
 shared (the roadmap, shared open questions) stays in `.agents/STATUS.md`. Who works on what is in
-each work file's header, so no branch edits a shared file to announce itself (two branches adding a
+each work file's front matter, so no branch edits a shared file to announce itself (two branches adding a
 row to one table conflict on every merge); `discipline work --list` gathers them from git. When a
 branch is merged, its work file is folded in: what was done goes to HISTORY.md, what is still open to
 STATUS.md, and the file is deleted. `discipline check` warns about work files left on the default
@@ -28,18 +28,23 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import review
+from . import frontmatter, review
 
 DIR = review.ROOT / ".agents" / "work"
 
-TEMPLATE = """# Work on `{branch}` (last updated {date})
+TEMPLATE = """---
+branch: {branch}
+started: {date}
+who:                         # the person (and their sessions) working on this branch
+roadmap:                     # the roadmap item from STATUS.md, with its proposal
+owns: []                     # the directories this branch changes; others don't edit them meanwhile
+---
 
-- **Who:** <!-- the person (and their sessions) working on this branch -->
-- **Roadmap item:** <!-- from STATUS.md, with the proposal -->
-- **Owns:** <!-- the directories this branch changes; others don't edit them meanwhile -->
+# Work on `{branch}`
 
 <!-- This branch's continuation point and state. The shared roadmap and open questions are in
-.agents/STATUS.md; `discipline work --list` shows every branch's header. Update the continuation point after every step. When the
+.agents/STATUS.md; `discipline work --list` shows every branch's front matter (who, roadmap, owns).
+Update the continuation point after every step. When the
 branch is merged: move what was done to HISTORY.md, anything still open to STATUS.md, then delete
 this file. Budget: 80 lines. -->
 
@@ -101,15 +106,21 @@ def branch_of(path: Path) -> str:
     return path.stem.replace("--", "/")
 
 
-HEADER_FIELDS = ("Who", "Roadmap item", "Owns")
+HEADER_FIELDS = {"Who": "who", "Roadmap item": "roadmap", "Owns": "owns"}  # label: front matter key
 
 
 def header(text: str) -> dict[str, str]:
+    """Who works on the branch, its roadmap item and what it owns: from the front matter, or from the
+    `- **Who:** …` bullets of work files written before 0.5."""
+    meta = frontmatter.read(text)
     out = {}
-    for field in HEADER_FIELDS:
-        m = re.search(rf"^- \*\*{field}:\*\*\s*(.*)$", text, re.M)
-        value = re.sub(r"<!--.*?-->", "", m.group(1)).strip() if m else ""
-        out[field] = value or "?"
+    for label, key in HEADER_FIELDS.items():
+        if meta:
+            value = ", ".join(frontmatter.as_list(meta.get(key)))
+        else:
+            m = re.search(rf"^- \*\*{label}:\*\*\s*(.*)$", text, re.M)
+            value = re.sub(r"<!--.*?-->", "", m.group(1)).strip() if m else ""
+        out[label] = value or "?"
     return out
 
 
@@ -219,7 +230,7 @@ def stop_reason() -> str | None:
         if not changed:
             return None
         return (f"Before stopping: files changed on branch `{branch}`, which has no work file. Run `discipline work` "
-                f"to create {rel}, fill in its header and continuation point, so a new session can resume. "
+                f"to create {rel}, fill in its front matter and continuation point, so a new session can resume. "
                 "If this was not work to resume (a question, an experiment), say so and stop.")
     newer = changed_since(path)
     if not newer:

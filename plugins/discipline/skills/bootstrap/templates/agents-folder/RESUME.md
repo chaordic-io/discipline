@@ -18,10 +18,11 @@ the gate, then update the work file before going on.
 Before stopping a session, check that:
 
 - the branch's work file (`discipline work`) has a current continuation point and is a snapshot,
-  with its header (who, roadmap item, what it owns) filled in; shared changes (the roadmap, shared
+  with its front matter (who, roadmap item, what it owns) filled in; shared changes (the roadmap, shared
   questions) are in `STATUS.md`;
-- every decision of the session is a file in `docs/decisions/` with its `Area` and `Spec`, any decision
-  it replaces is marked `Superseded by`, and the index is current (`discipline decisions index`);
+- every decision of the session, product or technical, is a file in `docs/decisions/` with its front
+  matter filled in (kind, who decided, area, spec) and what was turned down or abandoned, any decision
+  it replaces is marked with `superseded-by`, and the index is current (`discipline decisions index`);
 - `discipline handover` shows nothing over budget, or the user has been told what needs trimming;
 - the user knows what is uncommitted.
 

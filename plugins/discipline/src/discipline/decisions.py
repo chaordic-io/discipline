@@ -1,18 +1,37 @@
 """The decision log: one file per decision in docs/decisions/, and a generated index.
 
-    discipline decisions new "<title>"   create docs/decisions/<today>-<slug>.md from the entry format
+    discipline decisions new "<title>" [--kind K] [--by B] [--people P ...] [--area A ...]
+                                         create docs/decisions/<today>-<slug>.md and update the index
+    discipline decisions list [--kind K] [--by B] [--area A] [--spec S] [--all]
+                                         the decisions in force (with --all, superseded ones too)
+    discipline decisions search <words>  decisions, proposals and answered review questions mentioning
+                                         all the words
     discipline decisions index           regenerate docs/DECISIONS.md, the index
-    discipline decisions check           exit 1 if the index is out of date
-    discipline decisions search <words>  decisions and answered review questions mentioning all the words
+    discipline decisions check           exit 1 if the index is out of date or a decision is malformed
+    discipline decisions migrate         move decisions and proposals written before 0.5 into front matter
+
+Each decision has YAML front matter with its title, what kind it is and who made it, so both product
+and technical decisions can be found, filtered and checked. The title is only there (no `# heading`
+repeats it); the file name's slug is made from it once and never changes, so links and
+`superseded-by` keep working when the title is reworded:
+
+    title:       what was decided, in a few words
+    kind:        product (what users see or can do; the user's call) | technical (how it is built)
+    decided-by:  agent (an agent alone, within its remit) | together (agents and people) | people
+    people:      who decided, for `together` and `people` (names or roles)
+    area, spec, tests, superseded-by
+
+The body records the trigger, the decision, the alternatives turned down and the approaches tried and
+abandoned, each with the reason, so nobody proposes them again without knowing why they were dropped.
 
 Decisions recorded before discipline was adopted can stay where they are (e.g. an ADR folder): list
 their folders in `.agents/profile.json` as `"decisionsElsewhere": ["docs/adr"]`. The index links to
 them and `search` searches them too; new decisions go in docs/decisions/.
 
 One file per decision means branches never conflict over the log: each adds its own files. The index
-(newest first: date, title, area, superseded) is generated, so it is never edited by hand; after a
-merge, regenerate it. `discipline check` fails while it is out of date. Read decisions by search
-(`grep -rn "Area: invoicing" docs/decisions/`), not in full; skip superseded ones.
+(newest first) is generated, so it is never edited by hand; after a merge, regenerate it. `discipline
+check` fails while it is out of date. Read decisions by `list` and `search`, not in full; a replaced
+decision stays, with `superseded-by` naming the file that replaced it.
 """
 from __future__ import annotations
 
@@ -21,32 +40,60 @@ import datetime as dt
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import review
+from . import frontmatter, review
 
 DIR = review.ROOT / "docs" / "decisions"
 INDEX = review.ROOT / "docs" / "DECISIONS.md"
+PROPOSALS = review.ROOT / "docs" / "proposals"
 NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z0-9-]+)\.md$")
 
-ENTRY = """# {title}
+KINDS = ("product", "technical")
+DECIDED_BY = ("agent", "together", "people")
+PROPOSAL_STATUSES = ("proposal", "accepted", "building", "built", "dropped")
 
-- **Date:** {date}. **Kind:** <user decision | user feedback | agent, bug fix>
-- **Area:** <one or two words from the spec's areas, e.g. invoicing, permissions>
-- **Trigger:** <what prompted it, with the user's words quoted where they gave them>
-- **Decision:** <what was decided, precisely enough to build and test from>
-- **Alternatives turned down:** <each with the reason>
-- **Conventions taken during the build** (optional): <choices made without asking, so they can be revisited>
-- **Spec:** <the docs/SPEC.md section(s)>. **Tests:** <the tests that pin it>
+COMMENTS = {
+    "kind": "product | technical",
+    "decided-by": "agent | together | people",
+    "people": "who decided (names or roles); empty when an agent decided alone",
+    "area": "one or two of the spec's areas, e.g. invoicing",
+    "spec": "the docs/SPEC.md section(s)",
+    "tests": "the tests that pin it",
+    "superseded-by": "set later: the file of the decision that replaced it",
+}
+
+BODY = """
+## Trigger
+
+<!-- What prompted it, with the user's or developer's words quoted where they gave them. -->
+
+## Decision
+
+<!-- What was decided, precisely enough to build and test from. -->
+
+## Alternatives turned down
+
+<!-- One bullet per option considered and not taken, with the reason it was turned down. -->
+
+## Tried and abandoned
+
+<!-- Optional: approaches that were built or tried and then dropped: what was tried, how far it got,
+and why it failed, so nobody tries it again without knowing. Delete the section if there were none. -->
+
+## Conventions taken during the build
+
+<!-- Optional: small choices made without asking, so they can be revisited. -->
 """
 
 HEADER = """# Decisions
 
 The index of `docs/decisions/`, one file per decision, newest first. Generated by
 `discipline decisions index`: don't edit it by hand (the gate fails when it is out of date). Find the
-decisions that concern you by search (`grep -rln "Area: <area>" docs/decisions/`, or the spec section);
-skip superseded ones. A new decision: `discipline decisions new "<title>"`, then fill it in.
+decisions that concern you with `discipline decisions list --area <area>` (or `--kind technical`,
+`--spec <section>`) and `discipline decisions search <words>`. A new decision:
+`discipline decisions new "<title>" --kind <product|technical> --by <agent|together|people>`, then fill it in.
 """
 
 
@@ -65,29 +112,95 @@ class Entry:
     file: str
     date: str
     title: str
-    area: str
-    superseded: bool
+    area: list[str] = field(default_factory=list)
+    kind: str = ""
+    by: str = ""
+    people: list[str] = field(default_factory=list)
+    spec: list[str] = field(default_factory=list)
+    superseded_by: str = ""
+    legacy: bool = False  # the pre-0.5 bullet format, without front matter
+    error: str = ""       # front matter that can't be read
+    titled: bool = True   # the title is in the front matter (not only in a `# heading`)
+
+    @property
+    def superseded(self) -> bool:
+        return bool(self.superseded_by)
+
+    def who(self) -> str:
+        names = ", ".join(self.people)
+        return f"{self.by} ({names})" if names and self.by != "agent" else self.by
+
+
+def _placeholder(value: str) -> bool:
+    return not value or value.startswith("<")
+
+
+def _legacy(text: str) -> dict:
+    """The fields of a pre-0.5 decision, written as `- **Label:** value` bullets."""
+    area = re.search(r"\*\*Area:\*\*\s*([^\n]*)", text)
+    sup = re.search(r"\*\*Superseded by:?\*\*:?\s*(\S[^\n]*)", text)
+    spec = re.search(r"\*\*Spec:\*\*\s*([^\n]*?)(?:\.?\s*\*\*Tests:|$)", text, re.M)
+    areas = [a.strip() for a in re.split(r",", area.group(1))] if area else []
+    return {"area": [a for a in areas if a], "superseded-by": sup.group(1).strip() if sup else "",
+            "spec": [spec.group(1).strip()] if spec and spec.group(1).strip() else []}
+
+
+def pop_title(body: str) -> tuple[str, str]:
+    """(the first `# heading`'s text, the body without it), or ("", body) when there is none."""
+    m = re.search(r"^# (.+)\n?", body, re.M)
+    if not m:
+        return "", body
+    return m.group(1).strip(), (body[:m.start()] + body[m.end():].lstrip("\n")).lstrip("\n")
+
+
+def title_of(meta: dict, body: str, fallback: str) -> tuple[str, bool]:
+    """(the title, whether it came from the front matter). Files without one in their front matter
+    fall back to their `# heading`, then to the file name."""
+    value = meta.get("title")
+    if isinstance(value, str) and value and not _placeholder(value):
+        return value, True
+    return pop_title(body)[0] or fallback, False
+
+
+def entry(path: Path) -> Entry | None:
+    m = NAME.match(path.name)
+    if not m:
+        return None
+    text = path.read_text(encoding="utf-8")
+    try:
+        meta, body = frontmatter.split(text)
+        error = ""
+    except frontmatter.FrontMatterError as e:
+        meta, body, error = {}, frontmatter.strip(text), f"unreadable front matter, {e}"
+    legacy = meta is None
+    if legacy:
+        meta = _legacy(text)
+    title, titled = title_of(meta, body, m.group(2))
+
+    def one(key: str) -> str:
+        value = meta.get(key)
+        return value if isinstance(value, str) and not _placeholder(value) else ""
+
+    return Entry(path.name, m.group(1), title, [a for a in frontmatter.as_list(meta.get("area")) if not _placeholder(a)],
+                 one("kind"), one("decided-by"), frontmatter.as_list(meta.get("people")),
+                 frontmatter.as_list(meta.get("spec")), one("superseded-by"), legacy, error, titled or legacy or bool(error))
 
 
 def entries(directory: Path | None = None) -> list[Entry]:
     directory = directory or DIR
-    out = []
-    for path in sorted(directory.glob("*.md")) if directory.is_dir() else []:
-        m = NAME.match(path.name)
-        if not m:
-            continue
-        text = path.read_text(encoding="utf-8")
-        title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), m.group(2))
-        area = re.search(r"\*\*Area:\*\*\s*([^\n]*)", text)
-        sup = re.search(r"\*\*Superseded by:?\*\*:?\s*(\S[^\n]*)", text)
-        out.append(Entry(path.name, m.group(1), title, area.group(1).strip() if area else "", bool(sup)))
-    return sorted(out, key=lambda e: (e.date, e.file), reverse=True)
+    found = [entry(p) for p in sorted(directory.glob("*.md"))] if directory.is_dir() else []
+    return sorted((e for e in found if e), key=lambda e: (e.date, e.file), reverse=True)
+
+
+def _cell(s: str) -> str:
+    return s.replace("|", "/")
 
 
 def render(items: list[Entry], earlier: list[str] = ()) -> str:
-    rows = [f"| {e.date} | [{e.title.replace('|', '/')}](decisions/{e.file}) | {e.area.replace('|', '/')} | "
-            f"{'superseded' if e.superseded else ''} |" for e in items]
-    table = "\n".join(["| Date | Decision | Area | |", "|---|---|---|---|", *rows]) if rows else "_No decisions yet._"
+    rows = [f"| {e.date} | [{_cell(e.title)}](decisions/{e.file}) | {_cell(e.kind)} | {_cell(e.who())} | "
+            f"{_cell(', '.join(e.area))} | {'superseded' if e.superseded else ''} |" for e in items]
+    table = ("\n".join(["| Date | Decision | Kind | Decided by | Area | |", "|---|---|---|---|---|---|", *rows])
+             if rows else "_No decisions yet._")
     links = ", ".join(f"[{d}/]({os.path.relpath(d, 'docs')}/)" for d in earlier)
     note = f"\nEarlier decisions, kept where they were recorded (`discipline decisions search` covers them): {links}\n" if earlier else ""
     return HEADER + note + "\n" + table + "\n"
@@ -97,52 +210,112 @@ def problems(directory: Path | None = None, index: Path | None = None,
              earlier: list[str] | None = None) -> tuple[list[str], list[str]]:
     """(problems, warnings) for the gate."""
     directory, index = directory or DIR, index or INDEX
-    earlier = elsewhere(directory.parents[1]) if earlier is None else earlier
     root = directory.parents[1]
+    earlier = elsewhere(root) if earlier is None else earlier
     errs, warns = [], []
     gone = [d for d in earlier if not (root / d).is_dir()]
     if gone:
         warns.append(f"decisionsElsewhere names folders that don't exist: {', '.join(gone)}")
-    if not directory.is_dir():
-        return errs, warns
-    items = entries(directory)
-    if not index.exists() or index.read_text(encoding="utf-8") != render(items, earlier):
-        errs.append("docs/DECISIONS.md is out of date (run `discipline decisions index`)")
-    bad = [p.name for p in directory.glob("*.md") if p.name != "README.md" and not NAME.match(p.name)]
-    if bad:
-        errs.append(f"decision files not named <YYYY-MM-DD>-<slug>.md: {', '.join(sorted(bad))}")
-    missing = [e.file for e in items if not e.area or e.area.startswith("<")]
-    if missing:
-        warns.append(f"decisions without an Area (they can't be found by search): {', '.join(missing)}")
+    if directory.is_dir():
+        items = entries(directory)
+        if not index.exists() or index.read_text(encoding="utf-8") != render(items, earlier):
+            errs.append("docs/DECISIONS.md is out of date (run `discipline decisions index`)")
+        bad = [p.name for p in directory.glob("*.md") if p.name != "README.md" and not NAME.match(p.name)]
+        if bad:
+            errs.append(f"decision files not named <YYYY-MM-DD>-<slug>.md: {', '.join(sorted(bad))}")
+        errs += [f"{e.file}: {e.error}" for e in items if e.error]
+        errs += [f"{e.file}: no title in its front matter (run `discipline decisions migrate`)" for e in items if not e.titled]
+        current = [e for e in items if not e.legacy and not e.error]
+        errs += [f"{e.file}: kind must be one of {' | '.join(KINDS)}" for e in current if e.kind not in KINDS]
+        errs += [f"{e.file}: decided-by must be one of {' | '.join(DECIDED_BY)}" for e in current if e.by not in DECIDED_BY]
+        names = {e.file for e in items}
+        errs += [f"{e.file}: superseded-by names {e.superseded_by}, which is not in docs/decisions/"
+                 for e in current if e.superseded and Path(e.superseded_by).name not in names]
+        product_by_agent = [e.file for e in current if e.kind == "product" and e.by == "agent"]
+        if product_by_agent:
+            warns.append("product decisions made by an agent alone (product decisions are the user's: confirm them, "
+                         f"then set decided-by and people): {', '.join(product_by_agent)}")
+        unnamed = [e.file for e in current if e.by in ("together", "people") and not e.people]
+        if unnamed:
+            warns.append(f"decisions made with people who aren't named (`people:`): {', '.join(unnamed)}")
+        legacy = [e.file for e in items if e.legacy]
+        if legacy:
+            warns.append(f"{len(legacy)} decisions in the pre-0.5 format without front matter "
+                         "(run `discipline decisions migrate`)")
+        missing = [e.file for e in items if not e.area]
+        if missing:
+            warns.append(f"decisions without an area (they can't be found by area): {', '.join(missing)}")
+    warns += proposal_warnings(root / "docs" / "proposals")
     return errs, warns
+
+
+def proposals(directory: Path | None = None) -> list[tuple[Path, dict]]:
+    """(path, front matter) for every proposal, the template left out."""
+    directory = directory or PROPOSALS
+    out = []
+    for path in sorted(directory.glob("*.md")) if directory.is_dir() else []:
+        if path.name not in ("TEMPLATE.md", "README.md"):
+            out.append((path, frontmatter.read(path.read_text(encoding="utf-8", errors="replace"))))
+    return out
+
+
+def proposal_warnings(directory: Path) -> list[str]:
+    bad = [p.name for p, meta in proposals(directory)
+           if meta.get("status") not in PROPOSAL_STATUSES or _placeholder(str(meta.get("title") or ""))]
+    if not bad:
+        return []
+    return [f"proposals without a title and a status ({' | '.join(PROPOSAL_STATUSES)}) in their front matter "
+            f"(`discipline decisions migrate` adds them): {', '.join(bad)}"]
 
 
 def slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60] or "decision"
 
 
-def new(title: str, today: str | None = None, directory: Path | None = None) -> Path:
+def new(title: str, today: str | None = None, directory: Path | None = None, kind: str = "",
+        by: str = "", people: list[str] | None = None, area: list[str] | None = None) -> Path:
     directory = directory or DIR
     today = today or dt.date.today().isoformat()
     directory.mkdir(parents=True, exist_ok=True)
     path, n = directory / f"{today}-{slug(title)}.md", 2
     while path.exists():
         path, n = directory / f"{today}-{slug(title)}-{n}.md", n + 1
-    path.write_text(ENTRY.format(title=title, date=today))
+    meta = {"title": title, "date": today, "kind": kind or "<product | technical>", "decided-by": by or "<agent | together | people>",
+            "people": people or [], "area": area or [], "spec": [], "tests": [], "superseded-by": ""}
+    path.write_text(frontmatter.dump(meta, COMMENTS) + BODY)
     return path
 
 
+def select(items: list[Entry], kind: str | None = None, by: str | None = None, area: str | None = None,
+           spec: str | None = None, include_superseded: bool = False) -> list[Entry]:
+    def keep(e: Entry) -> bool:
+        return ((include_superseded or not e.superseded) and (not kind or e.kind == kind) and (not by or e.by == by)
+                and (not area or any(area.lower() == a.lower() for a in e.area))
+                and (not spec or any(s == spec or s.startswith(spec + ".") or s.startswith(spec + " ") for s in e.spec)))
+    return [e for e in items if keep(e)]
+
+
+def line(e: Entry) -> str:
+    tags = ", ".join(x for x in (e.kind or "kind?", e.who() or "decided-by?", "/".join(e.area) or "no area") if x)
+    return f"{e.date}  docs/decisions/{e.file}  {e.title}  [{tags}]" + ("  (superseded)" if e.superseded else "")
+
+
 def search(words: list[str], directory: Path | None = None) -> list[str]:
-    """Decisions (newest first) and answered review questions whose text contains every word
-    (case-insensitive). Run it before asking the user anything: the answer may already exist."""
+    """Decisions (newest first), proposals and answered review questions whose text contains every word
+    (case-insensitive). Run it before asking the user anything, and before designing something: the
+    answer, or the reason an approach was turned down, may already exist."""
+    directory = directory or DIR
     words = [w.lower() for w in words]
     hits = []
     for e in entries(directory):
-        text = ((directory or DIR) / e.file).read_text(encoding="utf-8").lower()
-        if all(w in text for w in words):
-            hits.append(f"{e.date}  docs/decisions/{e.file}  {e.title}  [{e.area or 'no area'}]"
-                        + ("  (superseded)" if e.superseded else ""))
-    root = (directory or DIR).parents[1]
+        if all(w in (directory / e.file).read_text(encoding="utf-8").lower() for w in words):
+            hits.append(line(e))
+    root = directory.parents[1]
+    for path, meta in proposals(root / "docs" / "proposals"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if all(w in text.lower() for w in words):
+            title = title_of(meta, frontmatter.strip(text), path.stem)[0]
+            hits.append(f"proposal ({meta.get('status') or 'no status'})  {path.relative_to(root).as_posix()}  {title}")
     for folder in elsewhere(root):
         for path in sorted((root / folder).rglob("*.md")) if (root / folder).is_dir() else []:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -158,13 +331,157 @@ def search(words: list[str], directory: Path | None = None) -> list[str]:
     return hits
 
 
+# ---------------------------------------------------------------- migration from the bullet format
+
+_BULLET = re.compile(r"^- \*\*([^*]+?):?\*\*(?:\s*\([^)]*\))?:?\s*(.*)$")
+_SECTIONS = {"trigger": "Trigger", "decision": "Decision", "alternatives turned down": "Alternatives turned down",
+             "tried and abandoned": "Tried and abandoned",
+             "conventions taken during the build": "Conventions taken during the build"}
+
+
+def _kind_of(text: str) -> tuple[str, str]:
+    """(kind, decided-by) from a pre-0.5 `Kind` value, or placeholders when it doesn't say."""
+    t = text.lower()
+    if "user" in t:
+        return "product", "people"
+    if "agent" in t:
+        return "technical", "agent"
+    return "<product | technical>", "<agent | together | people>"
+
+
+def _title_first(meta: dict, title: str) -> dict:
+    return {"title": title, **{k: v for k, v in meta.items() if k != "title"}}
+
+
+def migrate_text(text: str) -> tuple[str, bool]:
+    """(the decision with front matter, whether kind and decided-by were inferred). A decision with
+    front matter but its title in a `# heading` gets the title moved into the front matter; one that
+    is already current is returned unchanged."""
+    meta = frontmatter.read(text)
+    if meta or text.startswith("---\n"):
+        if not meta or title_of(meta, "", "")[1]:
+            return text, True
+        title, body = pop_title(frontmatter.strip(text))
+        if not title:
+            return text, True
+        return frontmatter.dump(_title_first(meta, title), COMMENTS) + "\n" + body, True
+    fields: dict[str, str] = {}
+    title, rest, cur = "", [], None
+    for raw in text.splitlines():
+        if not title and raw.startswith("# "):
+            title = raw[2:].strip()
+            continue
+        b = _BULLET.match(raw)
+        if b:
+            label, value = b.group(1).strip().lower(), b.group(2).strip()
+            if label == "date":  # "- **Date:** 2026-11-04. **Kind:** user decision"
+                kind = re.search(r"\*\*Kind:\*\*\s*(.*)$", value)
+                fields["kind"] = kind.group(1).strip() if kind else ""
+                fields["date"] = re.match(r"[\d-]*", value).group(0)
+                cur = None
+                continue
+            if label == "spec":  # "- **Spec:** 3.2. **Tests:** tests/x.py"
+                tests = re.search(r"\*\*Tests:\*\*\s*(.*)$", value)
+                fields["tests"] = tests.group(1).strip() if tests else ""
+                value = re.sub(r"\.?\s*\*\*Tests:\*\*.*$", "", value).strip()
+            cur = label
+            fields[cur] = value
+            continue
+        if cur and raw.startswith((" ", "\t")) and raw.strip():
+            fields[cur] += "\n" + raw.strip()
+            continue
+        cur = None
+        if raw.strip():
+            rest.append(raw)
+    kind, by = _kind_of(fields.get("kind", ""))
+    split_list = lambda v: [x.strip() for x in re.split(r"[,;]", v or "") if x.strip() and not x.strip().startswith("<")]  # noqa: E731
+    meta = {"title": title or "<title>", "date": fields.get("date", ""), "kind": kind, "decided-by": by,
+            "people": ["user"] if by == "people" else [], "area": split_list(fields.get("area")),
+            "spec": split_list(fields.get("spec")), "tests": split_list(fields.get("tests")),
+            "superseded-by": fields.get("superseded by", "")}
+    body = []
+    for key, heading in _SECTIONS.items():
+        if fields.get(key) and not fields[key].startswith("<"):
+            body += [f"## {heading}", "", fields[key], ""]
+    known = {"date", "kind", "area", "spec", "tests", "superseded by", *_SECTIONS}
+    extra = [f"- **{k[0].upper() + k[1:]}:** {v}" for k, v in fields.items() if k not in known and v]
+    if extra or rest:
+        body += ["## Notes", "", *extra, *rest, ""]
+    return frontmatter.dump(meta, COMMENTS) + "\n" + "\n".join(body).strip() + "\n", not kind.startswith("<")
+
+
+_PROPOSAL_STATUS = re.compile(r"^> \*\*Status:\*\*\s*([a-z]+)\W*(\d{4}-\d{2}-\d{2})?\.?\s*", re.M)
+
+
+def migrate_proposal(text: str) -> str:
+    """A proposal with its title (the `# Proposal: …` heading) and status (the `> **Status:** …` line of
+    templates before 0.5) moved into front matter. One that has both already is returned unchanged."""
+    meta, body = frontmatter.read(text), frontmatter.strip(text)
+    if meta.get("status") in PROPOSAL_STATUSES and not _placeholder(str(meta.get("title") or "")):
+        return text
+    title, body = pop_title(body) if _placeholder(str(meta.get("title") or "")) else (meta["title"], body)
+    title = re.sub(r"^Proposal:\s*", "", title) or "<feature>"
+    status, date = meta.get("status"), meta.get("date") or ""
+    m = _PROPOSAL_STATUS.search(body)
+    if m:
+        status = status or m.group(1)
+        date = date or (m.group(2) or "")
+        body = body[:m.start()] + "> " + body[m.end():]
+        body = re.sub(r"^> \n", "", body, count=1, flags=re.M)
+    status = status if status in PROPOSAL_STATUSES else "proposal"
+    meta = {"title": title, "status": status, "date": date or "<YYYY-MM-DD>",
+            **{k: v for k, v in meta.items() if k not in ("title", "status", "date")}}
+    meta.setdefault("area", [])
+    meta.setdefault("decisions", [])
+    return frontmatter.dump(meta) + "\n" + body.lstrip("\n")
+
+
+def migrate(directory: Path | None = None) -> tuple[list[str], list[str]]:
+    """(migrated files, files whose kind and decided-by need filling in by hand)."""
+    done, check = [], []
+    for e in entries(directory or DIR):
+        if not e.legacy and e.titled:
+            continue
+        path = (directory or DIR) / e.file
+        text, inferred = migrate_text(path.read_text(encoding="utf-8"))
+        path.write_text(text, encoding="utf-8")
+        done.append(e.file)
+        if not inferred:
+            check.append(e.file)
+    return done, check
+
+
+def migrate_proposals(directory: Path | None = None) -> list[str]:
+    """The proposals given front matter (a title and a status)."""
+    done = []
+    for path, _ in proposals(directory):
+        text = path.read_text(encoding="utf-8")
+        new_text = migrate_proposal(text)
+        if new_text != text:
+            path.write_text(new_text, encoding="utf-8")
+            done.append(path.name)
+    return done
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="discipline decisions", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("new").add_argument("title")
+    n = sub.add_parser("new")
+    n.add_argument("title")
+    n.add_argument("--kind", choices=KINDS)
+    n.add_argument("--by", choices=DECIDED_BY, help="agent (alone) | together (agents and people) | people")
+    n.add_argument("--people", nargs="+", default=[], help="who decided (names or roles)")
+    n.add_argument("--area", nargs="+", default=[])
+    ls = sub.add_parser("list")
+    ls.add_argument("--kind", choices=KINDS)
+    ls.add_argument("--by", choices=DECIDED_BY)
+    ls.add_argument("--area")
+    ls.add_argument("--spec", help="a docs/SPEC.md section; its subsections match too")
+    ls.add_argument("--all", action="store_true", help="include superseded decisions")
     sub.add_parser("index")
     sub.add_parser("check")
+    sub.add_parser("migrate")
     sub.add_parser("search").add_argument("words", nargs="+")
     a = p.parse_args(argv)
     if a.cmd == "search":
@@ -173,10 +490,28 @@ def main(argv: list[str] | None = None) -> int:
             print(h)
         print(f"{len(hits)} found" + ("" if hits else ": nothing decided on this yet (also check docs/SPEC.md and STATUS.md)"))
         return 0
+    if a.cmd == "list":
+        found = select(entries(), a.kind, a.by, a.area, a.spec, a.all)
+        for e in found:
+            print(line(e))
+        print(f"{len(found)} decisions" + ("" if a.all else " in force"))
+        return 0
     if a.cmd == "new":
-        path = new(a.title)
+        if a.by == "agent" and a.people:
+            p.error("--by agent means an agent decided alone: use --by together to name people")
+        path = new(a.title, kind=a.kind or "", by=a.by or "", people=a.people, area=a.area)
         print(path.relative_to(review.ROOT))
         INDEX.write_text(render(entries(), elsewhere()))
+        return 0
+    if a.cmd == "migrate":
+        done, check = migrate()
+        for f in done:
+            print(f"migrated  docs/decisions/{f}" + ("  (fill in kind and decided-by)" if f in check else ""))
+        for f in migrate_proposals():
+            print(f"migrated  docs/proposals/{f}  (check its status and fill in its area)")
+        INDEX.parent.mkdir(parents=True, exist_ok=True)
+        INDEX.write_text(render(entries(), elsewhere()))
+        print(f"{len(done)} migrated; {len(check)} need kind and decided-by filled in; index regenerated")
         return 0
     if a.cmd == "index":
         INDEX.parent.mkdir(parents=True, exist_ok=True)

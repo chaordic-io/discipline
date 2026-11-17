@@ -41,7 +41,7 @@ class GuardTest(unittest.TestCase):
             "vitest -u", "jest --updateSnapshot", "go test ./... -update",
             "discipline review mark a:tests", "discipline review baseline --reason x", "discipline review record x.json", "discipline lenses apply",
             "discipline review requeue --lens gdpr --reason x", "discipline lenses new gdpr --why x",
-            "discipline decisions new 'x'", "discipline decisions index", "discipline work",
+            "discipline decisions new 'x'", "discipline decisions index", "discipline decisions migrate", "discipline work",
             "cd src && rm x", "find . -name '*.tmp' | xargs rm",
         ]:
             self.assertTrue(self.denied(bash(cmd)), cmd)
@@ -52,7 +52,7 @@ class GuardTest(unittest.TestCase):
             "cat src/a.go", "ls -la", "go test ./internal/auth/...", "npx vitest run src/x.test.ts",
             "pytest -q tests/test_a.py 2>&1 | tail -20", "discipline review show auth", "discipline review diff",
             "discipline review checklist security", "discipline doc engineering", "npm audit --omit=dev",
-            "discipline decisions search rounding", "discipline work --list", "discipline assumptions",
+            "discipline decisions search rounding", "discipline decisions list --kind technical --area money", "discipline work --list", "discipline assumptions",
             "ruff check src", "black --check src", "echo done", "cat a 2>/dev/null", "go vet ./... 2>&1",
             "wc -l src/*.go > /dev/null", "jq '.a' f.json",
         ]:

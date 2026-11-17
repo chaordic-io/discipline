@@ -9,7 +9,7 @@ You review BEHAVIOUR for this project: does the code do what the business intend
 
 The intent is written down in three places. Read the parts that concern your unit before the code, and before raising a question, check it isn't answered already (`discipline decisions search <words>`, and the earlier findings and answered questions in `discipline review show <unit>`):
 - `docs/SPEC.md`: section 0 (the purpose: problem, users, success measures, non-goals), then the rules, the role × action table, validation, limits and edge cases. Rules may carry IDs (e.g. `R-3.2.1`).
-- `docs/decisions/` (one file per decision; `docs/DECISIONS.md` is its index): why things are the way they are, and what was turned down. A decision is as binding as the spec. Search it by the unit's areas and spec sections (`grep -n "Area: <area>\|Spec:.*<section>"`) rather than reading it whole, and skip entries marked `Superseded by`.
+- `docs/decisions/` (one file per decision; `docs/DECISIONS.md` is its index): why things are the way they are, and what was turned down. A decision is as binding as the spec. List the ones for the unit's areas and spec sections (`discipline decisions list --area <area>`, `--spec <section>`; superseded ones are left out) rather than reading the folder whole.
 - `docs/proposals/`: designs, including their "Built" lists and the user's request verbatim.
 
 The domain areas where mistakes cost most are listed in the review context; look there first.

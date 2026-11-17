@@ -12,9 +12,12 @@ unfinished step, and asks for the work file to be updated when code changed afte
 Why it exists (the problem, the users, what success looks like, the non-goals) is section 0 of
 `docs/SPEC.md`; read it before any judgement call no rule settles. The specification is in `docs/SPEC.md`. Read the relevant section before you change behaviour, and
 update the spec when behaviour changes. When a change comes from user feedback or a product decision,
-also add a decision (`discipline decisions new "<title>"`, a file in `docs/decisions/`): what triggered
-it, the decision, the alternatives turned down,
-and where it is in the spec. New features start as a proposal in `docs/proposals/` (template:
+or settles a technical question someone could revisit (a dependency, a store, a boundary, a pattern, an
+approach abandoned), also add a decision (`discipline decisions new "<title>" --kind product|technical
+--by agent|together|people`, a file in `docs/decisions/`): what triggered it, who decided, the decision,
+the alternatives turned down and what was tried and abandoned, and where it is in the spec. Before
+designing, check what was turned down already (`discipline decisions list --area <area>`,
+`discipline decisions search <words>`). New features start as a proposal in `docs/proposals/` (template:
 `docs/proposals/TEMPLATE.md`) with the user's open questions.
 
 ## Layout
